@@ -1,0 +1,254 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Settings, TimerStatus, DEFAULT_SETTINGS } from './types';
+import { SettingsModal } from './components/SettingsModal';
+import { CircularProgress } from './components/CircularProgress';
+import { playMindfulnessBell, playSessionEndSound } from './utils/sound';
+import { Settings as SettingsIcon, Play, Pause, RotateCcw, Volume2 } from 'lucide-react';
+
+const formatTime = (seconds: number) => {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
+export default function App() {
+  // --- State ---
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
+  const [status, setStatus] = useState<TimerStatus>(TimerStatus.IDLE);
+  const [globalTimeLeft, setGlobalTimeLeft] = useState(0); // Seconds left in the entire session
+  const [nextBellCountdown, setNextBellCountdown] = useState(0); // Seconds until next random bell
+  const [microBreakActive, setMicroBreakActive] = useState(false); // Is the "DING" message showing?
+  
+  // Refs for timer logic to avoid stale closures in intervals
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const nextBellRef = useRef<number>(0); 
+  
+  // --- Logic ---
+
+  // Calculate a random duration between min and max (inclusive) in seconds
+  const getRandomIntervalSeconds = useCallback(() => {
+    const minSec = settings.minIntervalMinutes * 60;
+    const maxSec = settings.maxIntervalMinutes * 60;
+    return Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec;
+  }, [settings.minIntervalMinutes, settings.maxIntervalMinutes]);
+
+  // Reset / Init
+  const resetTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setStatus(TimerStatus.IDLE);
+    setGlobalTimeLeft(settings.focusDurationMinutes * 60);
+    setNextBellCountdown(0);
+    setMicroBreakActive(false);
+  }, [settings.focusDurationMinutes]);
+
+  // Initialize on first load or settings change if IDLE
+  useEffect(() => {
+    if (status === TimerStatus.IDLE) {
+      setGlobalTimeLeft(settings.focusDurationMinutes * 60);
+    }
+  }, [settings.focusDurationMinutes, status]);
+
+  // Start Timer
+  const startTimer = () => {
+    if (status === TimerStatus.IDLE || status === TimerStatus.FINISHED) {
+      // Fresh start
+      const initialInterval = getRandomIntervalSeconds();
+      setGlobalTimeLeft(settings.focusDurationMinutes * 60);
+      setNextBellCountdown(initialInterval);
+      nextBellRef.current = initialInterval;
+      setStatus(TimerStatus.RUNNING);
+    } else if (status === TimerStatus.PAUSED) {
+      // Resume
+      setStatus(TimerStatus.RUNNING);
+    }
+  };
+
+  const pauseTimer = () => {
+    setStatus(TimerStatus.PAUSED);
+  };
+
+  // Main Tick Loop
+  useEffect(() => {
+    if (status === TimerStatus.RUNNING) {
+      timerRef.current = setInterval(() => {
+        setGlobalTimeLeft((prev) => {
+          // 1. Check Global End
+          if (prev <= 1) {
+            clearInterval(timerRef.current!);
+            setStatus(settings.showBreakCountdown ? TimerStatus.BREAK : TimerStatus.FINISHED);
+            playSessionEndSound();
+            return settings.showBreakCountdown ? settings.longBreakMinutes * 60 : 0;
+          }
+          return prev - 1;
+        });
+
+        // 2. Check Bell Countdown
+        setNextBellCountdown((prev) => {
+          if (prev <= 1) {
+            // TIME FOR A DING!
+            playMindfulnessBell();
+            
+            // Trigger Visual Micro Break
+            setMicroBreakActive(true);
+            setTimeout(() => setMicroBreakActive(false), settings.microBreakSeconds * 1000);
+            
+            // Calculate next interval
+            const next = getRandomIntervalSeconds();
+            // Ensure next interval doesn't exceed remaining global time (optional, but nice UX)
+            // actually, standard random reminders usually just run until time is up.
+            return next;
+          }
+          return prev - 1;
+        });
+
+      }, 1000);
+    } else if (status === TimerStatus.BREAK) {
+      // Simple countdown for break
+      timerRef.current = setInterval(() => {
+        setGlobalTimeLeft((prev) => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current!);
+            setStatus(TimerStatus.FINISHED);
+            playSessionEndSound();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [status, settings.longBreakMinutes, settings.showBreakCountdown, settings.microBreakSeconds, getRandomIntervalSeconds]);
+
+
+  // --- Render Helpers ---
+  
+  const getProgressColor = () => {
+    if (status === TimerStatus.BREAK) return "stroke-emerald-500";
+    if (status === TimerStatus.FINISHED) return "stroke-slate-400";
+    return "stroke-indigo-600";
+  };
+
+  const getTotalTimeForProgress = () => {
+    if (status === TimerStatus.BREAK) return settings.longBreakMinutes * 60;
+    return settings.focusDurationMinutes * 60;
+  };
+  
+  const getStatusText = () => {
+    if (status === TimerStatus.BREAK) return "休息时间";
+    if (status === TimerStatus.FINISHED) return "已完成";
+    if (status === TimerStatus.PAUSED) return "已暂停";
+    return "专注中";
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      
+      {/* Background Ambient Circles */}
+      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-100 rounded-full blur-3xl opacity-50 pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-emerald-100 rounded-full blur-3xl opacity-50 pointer-events-none"></div>
+
+      {/* Top Bar */}
+      <div className="absolute top-6 right-6 z-20">
+        <button 
+          onClick={() => setIsSettingsOpen(true)}
+          className="p-3 bg-white text-slate-600 rounded-full shadow-md hover:bg-slate-50 hover:text-indigo-600 transition-all active:scale-95"
+        >
+          <SettingsIcon size={24} />
+        </button>
+      </div>
+
+      <div className="max-w-md w-full flex flex-col items-center gap-8 z-10">
+        
+        {/* Title */}
+        <div className="text-center space-y-2">
+           <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Focus Flow</h1>
+           <p className="text-slate-500 text-sm">保持专注，享受当下</p>
+        </div>
+
+        {/* Main Timer Display */}
+        <div className="relative">
+          <CircularProgress 
+            totalSeconds={getTotalTimeForProgress()} 
+            currentSeconds={globalTimeLeft}
+            color={getProgressColor()}
+          >
+             <div className="text-center flex flex-col items-center">
+               <span className={`text-5xl font-mono font-bold tracking-tighter ${status === TimerStatus.BREAK ? 'text-emerald-600' : 'text-slate-800'}`}>
+                 {formatTime(globalTimeLeft)}
+               </span>
+               <span className="text-slate-500 mt-2 font-medium uppercase tracking-widest text-xs">
+                 {getStatusText()}
+               </span>
+             </div>
+          </CircularProgress>
+
+          {/* Micro Break Toast / Indicator */}
+          <div 
+            className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full h-full rounded-full bg-indigo-600/90 flex items-center justify-center text-white backdrop-blur-sm transition-all duration-500 ${microBreakActive ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}
+          >
+             <div className="text-center animate-pulse">
+                <Volume2 size={48} className="mx-auto mb-2" />
+                <p className="text-xl font-bold">深呼吸</p>
+             </div>
+          </div>
+        </div>
+
+        {/* Info Cards */}
+        {status !== TimerStatus.IDLE && status !== TimerStatus.FINISHED && status !== TimerStatus.BREAK && (
+           <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 w-full flex justify-between items-center shadow-sm border border-white/50">
+              <div className="flex flex-col">
+                 <span className="text-xs text-slate-400 uppercase font-bold">下一次提醒</span>
+                 <span className="text-lg font-mono text-slate-700">
+                    {status === TimerStatus.RUNNING ? formatTime(nextBellCountdown) : '--:--'}
+                 </span>
+              </div>
+              <div className="flex flex-col text-right">
+                 <span className="text-xs text-slate-400 uppercase font-bold">随机范围</span>
+                 <span className="text-sm font-medium text-slate-600">
+                    {settings.minIntervalMinutes} - {settings.maxIntervalMinutes} 分钟
+                 </span>
+              </div>
+           </div>
+        )}
+
+        {/* Controls */}
+        <div className="flex items-center gap-6 mt-4">
+          {(status === TimerStatus.RUNNING || status === TimerStatus.BREAK) ? (
+             <button 
+               onClick={pauseTimer}
+               className="w-20 h-20 bg-amber-400 hover:bg-amber-500 text-white rounded-full shadow-lg hover:shadow-amber-200/50 flex items-center justify-center transition-all active:scale-95"
+             >
+               <Pause size={32} fill="currentColor" />
+             </button>
+          ) : (
+             <button 
+               onClick={startTimer}
+               className="w-20 h-20 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-indigo-200/50 flex items-center justify-center transition-all active:scale-95"
+             >
+               <Play size={32} fill="currentColor" className="ml-1" />
+             </button>
+          )}
+          
+          <button 
+             onClick={resetTimer}
+             className="w-14 h-14 bg-white hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-full shadow-md border border-slate-100 flex items-center justify-center transition-all active:scale-95"
+          >
+             <RotateCcw size={24} />
+          </button>
+        </div>
+      </div>
+
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+        settings={settings}
+        onUpdateSettings={setSettings}
+      />
+    </div>
+  );
+}
