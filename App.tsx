@@ -5,29 +5,99 @@ import { CircularProgress } from './components/CircularProgress';
 import { playMindfulnessBell, playSessionEndSound } from './utils/sound';
 import { Settings as SettingsIcon, Play, Pause, RotateCcw, Volume2 } from 'lucide-react';
 
+const STORAGE_KEY = 'focusFlowState';
+
 const formatTime = (seconds: number) => {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
+// Helper to get initial state from localStorage
+const getInitialState = () => {
+  try {
+    const savedStr = localStorage.getItem(STORAGE_KEY);
+    if (!savedStr) return null;
+    
+    const saved = JSON.parse(savedStr);
+    const now = Date.now();
+    // Calculate how many seconds passed since last save
+    const elapsed = (now - (saved.lastUpdated || now)) / 1000;
+
+    let { status, globalTimeLeft, nextBellCountdown } = saved;
+
+    // Adjust time if timer was active (RUNNING or BREAK)
+    if (status === TimerStatus.RUNNING || status === TimerStatus.BREAK) {
+      globalTimeLeft -= elapsed;
+      
+      if (status === TimerStatus.RUNNING) {
+        nextBellCountdown -= elapsed;
+        // If bell was missed while away, reset it to a short delay (5s) to resume rhythm
+        // rather than firing immediately (which might be blocked by browser autoplay policy)
+        if (nextBellCountdown <= 0) {
+           nextBellCountdown = 5; 
+        }
+      }
+
+      // If time ran out while away
+      if (globalTimeLeft <= 0) {
+        status = TimerStatus.FINISHED; 
+        globalTimeLeft = 0;
+        nextBellCountdown = 0;
+      }
+    }
+
+    return {
+      settings: saved.settings,
+      status,
+      globalTimeLeft: Math.floor(globalTimeLeft),
+      nextBellCountdown: Math.floor(nextBellCountdown),
+    };
+  } catch (e) {
+    console.error('Failed to load state', e);
+    return null;
+  }
+};
+
+// Load state once on module load to avoid repetitive parsing during renders
+const loadedInitialState = getInitialState();
+
 export default function App() {
   // --- State ---
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<Settings>(loadedInitialState?.settings || DEFAULT_SETTINGS);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
-  const [status, setStatus] = useState<TimerStatus>(TimerStatus.IDLE);
-  const [globalTimeLeft, setGlobalTimeLeft] = useState(0); // Seconds left in the entire session
-  const [nextBellCountdown, setNextBellCountdown] = useState(0); // Seconds until next random bell
-  const [microBreakActive, setMicroBreakActive] = useState(false); // Is the "DING" message showing?
+  const [status, setStatus] = useState<TimerStatus>(loadedInitialState?.status || TimerStatus.IDLE);
   
-  // Refs for timer logic to avoid stale closures in intervals
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const nextBellRef = useRef<number>(0); 
+  // Initialize time based on saved state OR default to settings duration
+  const [globalTimeLeft, setGlobalTimeLeft] = useState(
+    loadedInitialState ? loadedInitialState.globalTimeLeft : DEFAULT_SETTINGS.focusDurationMinutes * 60
+  ); 
   
+  const [nextBellCountdown, setNextBellCountdown] = useState(
+    loadedInitialState ? loadedInitialState.nextBellCountdown : 0
+  ); 
+  
+  const [microBreakActive, setMicroBreakActive] = useState(false);
+  
+  // Refs for timer logic
+  const timerRef = useRef<number | null>(null);
+  
+  // --- Persistence Effect ---
+  // Save state to localStorage whenever it changes
+  useEffect(() => {
+    const stateToSave = {
+      settings,
+      status,
+      globalTimeLeft,
+      nextBellCountdown,
+      lastUpdated: Date.now()
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+  }, [settings, status, globalTimeLeft, nextBellCountdown]);
+
   // --- Logic ---
 
-  // Calculate a random duration between min and max (inclusive) in seconds
   const getRandomIntervalSeconds = useCallback(() => {
     const minSec = settings.minIntervalMinutes * 60;
     const maxSec = settings.maxIntervalMinutes * 60;
@@ -41,9 +111,10 @@ export default function App() {
     setGlobalTimeLeft(settings.focusDurationMinutes * 60);
     setNextBellCountdown(0);
     setMicroBreakActive(false);
+    // Clear storage for a clean slate logic if desired, but updating state triggers save anyway
   }, [settings.focusDurationMinutes]);
 
-  // Initialize on first load or settings change if IDLE
+  // Update time when settings change ONLY if IDLE
   useEffect(() => {
     if (status === TimerStatus.IDLE) {
       setGlobalTimeLeft(settings.focusDurationMinutes * 60);
@@ -53,14 +124,11 @@ export default function App() {
   // Start Timer
   const startTimer = () => {
     if (status === TimerStatus.IDLE || status === TimerStatus.FINISHED) {
-      // Fresh start
       const initialInterval = getRandomIntervalSeconds();
       setGlobalTimeLeft(settings.focusDurationMinutes * 60);
       setNextBellCountdown(initialInterval);
-      nextBellRef.current = initialInterval;
       setStatus(TimerStatus.RUNNING);
     } else if (status === TimerStatus.PAUSED) {
-      // Resume
       setStatus(TimerStatus.RUNNING);
     }
   };
@@ -72,7 +140,7 @@ export default function App() {
   // Main Tick Loop
   useEffect(() => {
     if (status === TimerStatus.RUNNING) {
-      timerRef.current = setInterval(() => {
+      timerRef.current = window.setInterval(() => {
         setGlobalTimeLeft((prev) => {
           // 1. Check Global End
           if (prev <= 1) {
@@ -87,26 +155,17 @@ export default function App() {
         // 2. Check Bell Countdown
         setNextBellCountdown((prev) => {
           if (prev <= 1) {
-            // TIME FOR A DING!
             playMindfulnessBell();
-            
-            // Trigger Visual Micro Break
             setMicroBreakActive(true);
             setTimeout(() => setMicroBreakActive(false), settings.microBreakSeconds * 1000);
-            
-            // Calculate next interval
-            const next = getRandomIntervalSeconds();
-            // Ensure next interval doesn't exceed remaining global time (optional, but nice UX)
-            // actually, standard random reminders usually just run until time is up.
-            return next;
+            return getRandomIntervalSeconds();
           }
           return prev - 1;
         });
 
       }, 1000);
     } else if (status === TimerStatus.BREAK) {
-      // Simple countdown for break
-      timerRef.current = setInterval(() => {
+      timerRef.current = window.setInterval(() => {
         setGlobalTimeLeft((prev) => {
           if (prev <= 1) {
             clearInterval(timerRef.current!);
@@ -122,11 +181,10 @@ export default function App() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [status, settings.longBreakMinutes, settings.showBreakCountdown, settings.microBreakSeconds, getRandomIntervalSeconds]);
+  }, [status, settings, getRandomIntervalSeconds]); 
 
 
   // --- Render Helpers ---
-  
   const getProgressColor = () => {
     if (status === TimerStatus.BREAK) return "stroke-emerald-500";
     if (status === TimerStatus.FINISHED) return "stroke-slate-400";
