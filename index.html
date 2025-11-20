@@ -2,8 +2,13 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="https://picsum.photos/32/32" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Focus Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -36,6 +41,39 @@
       }
       input[type=number] {
         -moz-appearance: textfield;
+      }
+
+      /* Animations */
+      @keyframes backdrop-enter {
+        0% { opacity: 0; backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
+        100% { opacity: 1; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+      }
+      @keyframes backdrop-exit {
+        0% { opacity: 1; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+        100% { opacity: 0; backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
+      }
+      
+      @keyframes modal-enter {
+        0% { opacity: 0; transform: scale(0.95) translateY(10px); }
+        100% { opacity: 1; transform: scale(1) translateY(0); }
+      }
+      @keyframes modal-exit {
+        0% { opacity: 1; transform: scale(1) translateY(0); }
+        100% { opacity: 0; transform: scale(0.95) translateY(10px); }
+      }
+
+      .animate-backdrop-enter {
+        animation: backdrop-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      .animate-backdrop-exit {
+        animation: backdrop-exit 0.3s ease-in forwards;
+      }
+
+      .animate-modal-enter {
+        animation: modal-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      .animate-modal-exit {
+        animation: modal-exit 0.3s ease-in forwards;
       }
     </style>
   <script type="importmap">
