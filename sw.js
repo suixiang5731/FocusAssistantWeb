@@ -1,4 +1,4 @@
-const CACHE_NAME = 'focus-flow-v1';
+const CACHE_NAME = 'focus-flow-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -33,10 +33,19 @@ self.addEventListener('activate', (event) => {
 });
 
 // Fetch event: Network first, fall back to cache
+// Enhanced to handle external CDN assets needed for the app to run offline
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests (like Google Fonts/CDN) for simple caching logic, 
-  // or let them pass through naturally.
-  if (!event.request.url.startsWith(self.location.origin)) {
+  const url = new URL(event.request.url);
+  
+  // Allow caching for specific external CDNs used in this project
+  const isAllowedExternal = 
+    url.hostname.includes('aistudiocdn.com') || 
+    url.hostname.includes('cdn.tailwindcss.com') || 
+    url.hostname.includes('fonts.googleapis.com') || 
+    url.hostname.includes('fonts.gstatic.com');
+
+  // If it's not same-origin AND not an allowed external asset, let it pass through (no caching)
+  if (!url.origin.startsWith(self.location.origin) && !isAllowedExternal) {
      return;
   }
 
@@ -44,7 +53,7 @@ self.addEventListener('fetch', (event) => {
     fetch(event.request)
       .then((response) => {
         // Check if we received a valid response
-        if (!response || response.status !== 200 || response.type !== 'basic') {
+        if (!response || response.status !== 200 || response.type !== 'basic' && response.type !== 'cors') {
           return response;
         }
 
