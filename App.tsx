@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Settings, TimerStatus, DEFAULT_SETTINGS, TimeUnit } from './types';
 import { SettingsModal } from './components/SettingsModal';
 import { CircularProgress } from './components/CircularProgress';
@@ -83,9 +83,59 @@ export default function App() {
   
   const [microBreakActive, setMicroBreakActive] = useState(false);
   
+  // --- Android Back Gesture State ---
+  const [showExitToast, setShowExitToast] = useState(false);
+  const lastBackPressTime = useRef<number>(0);
+  const isSettingsOpenRef = useRef(isSettingsOpen);
+
+  // Sync ref with state so event listener can access current value
+  useEffect(() => {
+    isSettingsOpenRef.current = isSettingsOpen;
+  }, [isSettingsOpen]);
+
   // Refs for timer logic
   const timerRef = useRef<number | null>(null);
   
+  // --- Android Back Gesture & History Logic ---
+  useEffect(() => {
+    // Create a history entry to trap the back button
+    // Using window.location.pathname keeps current url but adds a state entry
+    window.history.pushState(null, '', window.location.pathname);
+
+    const handlePopState = (event: PopStateEvent) => {
+      const now = Date.now();
+
+      // 1. If Settings Modal is open, close it and stay in app
+      if (isSettingsOpenRef.current) {
+        setIsSettingsOpen(false);
+        // Push state again to re-arm the trap (ensure we always have a "forward" state to pop)
+        window.history.pushState(null, '', window.location.pathname);
+        return;
+      }
+
+      // 2. Main Screen Logic
+      if (now - lastBackPressTime.current < 2000) {
+        // Double press detected: Allow exit
+        // We are currently at the 'popped' state (index N-1).
+        // Calling back() sends us to N-2, which effectively exits the PWA/Tab history
+        window.history.back();
+      } else {
+        // First press: Show toast and trap
+        lastBackPressTime.current = now;
+        setShowExitToast(true);
+        setTimeout(() => setShowExitToast(false), 2000);
+        
+        // Push state again to re-arm the trap
+        window.history.pushState(null, '', window.location.pathname);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
   // --- Persistence Effect ---
   // Save state to localStorage whenever it changes
   useEffect(() => {
@@ -339,6 +389,11 @@ export default function App() {
         settings={settings}
         onUpdateSettings={setSettings}
       />
+      
+      {/* Android Back Exit Toast */}
+      <div className={`fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-slate-800/90 text-white px-6 py-3 rounded-full text-sm font-medium shadow-lg transition-opacity duration-300 z-50 pointer-events-none ${showExitToast ? 'opacity-100' : 'opacity-0'}`}>
+         再按一次返回退出应用
+      </div>
     </div>
   );
 }
