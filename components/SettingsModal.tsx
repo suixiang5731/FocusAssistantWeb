@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Settings } from '../types';
-import { X } from 'lucide-react';
+import { Settings, DEFAULT_SETTINGS } from '../types';
+import { X, RotateCcw } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -9,30 +9,54 @@ interface SettingsModalProps {
   onUpdateSettings: (newSettings: Settings) => void;
 }
 
-// Extract InputRow to outside of the main component to prevent re-mounting on every render
-// This fixes the issue where the input loses focus after typing one character
+type TimeUnit = 'min' | 'sec';
+
+interface UnitState {
+  focusDuration: TimeUnit;
+  minInterval: TimeUnit;
+  maxInterval: TimeUnit;
+  microBreak: TimeUnit;
+  longBreak: TimeUnit;
+}
+
+const DEFAULT_UNITS: UnitState = {
+  focusDuration: 'min',
+  minInterval: 'min',
+  maxInterval: 'min',
+  microBreak: 'sec',
+  longBreak: 'min',
+};
+
+// Extract InputRow to outside
 interface InputRowProps {
   label: string;
   value: number;
-  unit: string;
+  currentUnit: TimeUnit;
   min?: number;
   onChange: (val: string) => void;
+  onToggleUnit: () => void;
 }
 
-const InputRow: React.FC<InputRowProps> = ({ label, value, unit, min = 1, onChange }) => (
+const InputRow: React.FC<InputRowProps> = ({ label, value, currentUnit, min = 0, onChange, onToggleUnit }) => (
   <div className="flex items-center justify-between py-1 group">
     <label className="text-slate-700 font-medium text-base sm:text-lg group-hover:text-indigo-600 transition-colors duration-200">{label}</label>
     <div className="flex items-center justify-end gap-3 w-[180px]">
       <input
         type="number"
-        inputMode="numeric"
-        pattern="[0-9]*"
+        inputMode="decimal"
         min={min}
+        step={currentUnit === 'min' ? "0.1" : "1"}
         value={value.toString()} 
         onChange={(e) => onChange(e.target.value)}
         className="w-24 text-center bg-slate-50 border border-slate-200 rounded-lg py-2 px-2 text-lg font-mono text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm hover:border-slate-300"
       />
-      <span className="text-base font-medium text-slate-400 w-10 text-right">{unit}</span>
+      <button 
+        onClick={onToggleUnit}
+        className="w-10 text-right text-base font-medium text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer select-none focus:outline-none active:scale-95"
+        title="点击切换单位"
+      >
+        {currentUnit === 'min' ? '分钟' : '秒'}
+      </button>
     </div>
   </div>
 );
@@ -43,16 +67,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onUpdateSettings,
 }) => {
-  // State to keep component mounted during exit animation
   const [isVisible, setIsVisible] = useState(false);
-  // Local state to buffer changes before saving
   const [localSettings, setLocalSettings] = useState<Settings>(settings);
+  const [units, setUnits] = useState<UnitState>(DEFAULT_UNITS);
 
-  // Sync local settings with global settings whenever the modal opens
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
       setLocalSettings(settings);
+      // We don't reset units here to persist user preference during session, 
+      // or you can reset them if desired: setUnits(DEFAULT_UNITS);
     }
   }, [isOpen, settings]);
 
@@ -62,25 +86,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  // Only unmount if closed AND not visible (animation finished)
   if (!isOpen && !isVisible) return null;
 
-  const handleChange = (key: keyof Settings, value: string | boolean) => {
-    let parsedValue: number | boolean = value as boolean;
-    
-    if (typeof value === 'string') {
-        if (value === '') {
-             // Handle empty input gracefully (e.g. treat as 0 during typing)
-            parsedValue = 0;
-        } else {
-            parsedValue = parseInt(value, 10);
-            if (isNaN(parsedValue)) parsedValue = 0;
-        }
+  // Helper to convert between stored value and display value
+  // baseUnit: the unit used in the Settings interface (e.g., 'min' for focusDurationMinutes)
+  const getDisplayValue = (storedValue: number, baseUnit: TimeUnit, displayUnit: TimeUnit): number => {
+    if (baseUnit === displayUnit) {
+        // Round to avoid ugly floats like 1.000000001
+        return Math.round(storedValue * 100) / 100;
     }
+    if (baseUnit === 'min' && displayUnit === 'sec') return Math.round(storedValue * 60);
+    if (baseUnit === 'sec' && displayUnit === 'min') return parseFloat((storedValue / 60).toFixed(2));
+    return storedValue;
+  };
 
-    setLocalSettings(prev => ({
+  // Helper to convert input string back to stored value
+  const calculateNewStoredValue = (inputValue: string, baseUnit: TimeUnit, displayUnit: TimeUnit): number => {
+    let val = parseFloat(inputValue);
+    if (isNaN(val)) val = 0;
+
+    if (baseUnit === displayUnit) return val;
+    if (baseUnit === 'min' && displayUnit === 'sec') return val / 60;
+    if (baseUnit === 'sec' && displayUnit === 'min') return val * 60;
+    return val;
+  };
+
+  const updateSetting = (key: keyof Settings, val: string, baseUnit: TimeUnit, displayUnit: TimeUnit) => {
+    const newValue = calculateNewStoredValue(val, baseUnit, displayUnit);
+    setLocalSettings(prev => ({ ...prev, [key]: newValue }));
+  };
+
+  const toggleUnit = (key: keyof UnitState) => {
+    setUnits(prev => ({
       ...prev,
-      [key]: parsedValue,
+      [key]: prev[key] === 'min' ? 'sec' : 'min'
     }));
   };
 
@@ -89,14 +128,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose();
   };
 
+  const handleReset = () => {
+    if (window.confirm('确定要恢复默认设置吗？')) {
+        // Use spread to ensure new object references are passed, triggering re-render
+        setLocalSettings({ ...DEFAULT_SETTINGS });
+        setUnits({ ...DEFAULT_UNITS });
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-      {/* Backdrop with blur and animation - Click event REMOVED */}
       <div 
         className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isOpen ? 'animate-backdrop-enter' : 'animate-backdrop-exit'}`} 
       />
       
-      {/* Modal Content with animation */}
       <div 
         className={`relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col ${isOpen ? 'animate-modal-enter' : 'animate-modal-exit'}`}
         onAnimationEnd={handleAnimationEnd}
@@ -113,37 +158,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        {/* Body - Scrollable */}
+        {/* Body */}
         <div className="p-6 sm:p-8 space-y-6 overflow-y-auto custom-scrollbar">
           
           <div className="space-y-4">
             <InputRow 
                 label="专注时间" 
-                value={localSettings.focusDurationMinutes} 
-                unit="分钟" 
-                onChange={(val) => handleChange('focusDurationMinutes', val)}
+                value={getDisplayValue(localSettings.focusDurationMinutes, 'min', units.focusDuration)}
+                currentUnit={units.focusDuration}
+                onChange={(val) => updateSetting('focusDurationMinutes', val, 'min', units.focusDuration)}
+                onToggleUnit={() => toggleUnit('focusDuration')}
             />
             
             <InputRow 
                 label="最小间隔" 
-                value={localSettings.minIntervalMinutes} 
-                unit="分钟" 
-                onChange={(val) => handleChange('minIntervalMinutes', val)}
+                value={getDisplayValue(localSettings.minIntervalMinutes, 'min', units.minInterval)}
+                currentUnit={units.minInterval}
+                onChange={(val) => updateSetting('minIntervalMinutes', val, 'min', units.minInterval)}
+                onToggleUnit={() => toggleUnit('minInterval')}
             />
 
             <InputRow 
                 label="最大间隔" 
-                value={localSettings.maxIntervalMinutes} 
-                unit="分钟" 
-                min={localSettings.minIntervalMinutes}
-                onChange={(val) => handleChange('maxIntervalMinutes', val)}
+                value={getDisplayValue(localSettings.maxIntervalMinutes, 'min', units.maxInterval)}
+                currentUnit={units.maxInterval}
+                min={getDisplayValue(localSettings.minIntervalMinutes, 'min', units.maxInterval)}
+                onChange={(val) => updateSetting('maxIntervalMinutes', val, 'min', units.maxInterval)}
+                onToggleUnit={() => toggleUnit('maxInterval')}
             />
 
             <InputRow 
                 label="微休息时间" 
-                value={localSettings.microBreakSeconds} 
-                unit="秒" 
-                onChange={(val) => handleChange('microBreakSeconds', val)}
+                value={getDisplayValue(localSettings.microBreakSeconds, 'sec', units.microBreak)}
+                currentUnit={units.microBreak}
+                onChange={(val) => updateSetting('microBreakSeconds', val, 'sec', units.microBreak)}
+                onToggleUnit={() => toggleUnit('microBreak')}
             />
           </div>
 
@@ -159,9 +208,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="space-y-4">
             <InputRow 
                 label="长休息时间" 
-                value={localSettings.longBreakMinutes} 
-                unit="分钟" 
-                onChange={(val) => handleChange('longBreakMinutes', val)}
+                value={getDisplayValue(localSettings.longBreakMinutes, 'min', units.longBreak)}
+                currentUnit={units.longBreak}
+                onChange={(val) => updateSetting('longBreakMinutes', val, 'min', units.longBreak)}
+                onToggleUnit={() => toggleUnit('longBreak')}
             />
 
             {/* Toggle */}
@@ -172,7 +222,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <input 
                       type="checkbox" 
                       checked={localSettings.showBreakCountdown} 
-                      onChange={(e) => handleChange('showBreakCountdown', e.target.checked)}
+                      onChange={(e) => setLocalSettings(prev => ({...prev, showBreakCountdown: e.target.checked}))}
                       className="sr-only peer" 
                     />
                     <div className="w-12 h-7 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-100 rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600 hover:bg-slate-300 transition-colors"></div>
@@ -184,10 +234,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
         
         {/* Footer */}
-        <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end sticky bottom-0 z-10">
+        <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-between items-center sticky bottom-0 z-10">
+            <button 
+                onClick={handleReset}
+                className="flex items-center gap-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 px-4 py-2.5 rounded-xl transition-all active:scale-95 font-medium"
+                title="恢复默认设置"
+            >
+                <RotateCcw size={18} />
+                <span>重置</span>
+            </button>
+
             <button 
                 onClick={handleSave}
-                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium py-3 sm:py-2.5 px-8 rounded-xl transition-all shadow-lg shadow-indigo-200 active:scale-95 active:shadow-none"
+                className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium py-2.5 px-8 rounded-xl transition-all shadow-lg shadow-indigo-200 active:scale-95 active:shadow-none"
             >
                 保存设置
             </button>
