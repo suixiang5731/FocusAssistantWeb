@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings } from '../types';
 import { X } from 'lucide-react';
 
@@ -9,66 +9,98 @@ interface SettingsModalProps {
   onUpdateSettings: (newSettings: Settings) => void;
 }
 
+// Extract InputRow to outside of the main component to prevent re-mounting on every render
+// This fixes the issue where the input loses focus after typing one character
+interface InputRowProps {
+  label: string;
+  value: number;
+  unit: string;
+  min?: number;
+  onChange: (val: string) => void;
+}
+
+const InputRow: React.FC<InputRowProps> = ({ label, value, unit, min = 1, onChange }) => (
+  <div className="flex items-center justify-between py-1 group">
+    <label className="text-slate-700 font-medium text-base sm:text-lg group-hover:text-indigo-600 transition-colors duration-200">{label}</label>
+    <div className="flex items-center justify-end gap-3 w-[180px]">
+      <input
+        type="number"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        min={min}
+        value={value.toString()} 
+        onChange={(e) => onChange(e.target.value)}
+        className="w-24 text-center bg-slate-50 border border-slate-200 rounded-lg py-2 px-2 text-lg font-mono text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm hover:border-slate-300"
+      />
+      <span className="text-base font-medium text-slate-400 w-10 text-right">{unit}</span>
+    </div>
+  </div>
+);
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   settings,
   onUpdateSettings,
 }) => {
-  if (!isOpen) return null;
+  // State to keep component mounted during exit animation
+  const [isVisible, setIsVisible] = useState(false);
+  // Local state to buffer changes before saving
+  const [localSettings, setLocalSettings] = useState<Settings>(settings);
+
+  // Sync local settings with global settings whenever the modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setIsVisible(true);
+      setLocalSettings(settings);
+    }
+  }, [isOpen, settings]);
+
+  const handleAnimationEnd = () => {
+    if (!isOpen) {
+      setIsVisible(false);
+    }
+  };
+
+  // Only unmount if closed AND not visible (animation finished)
+  if (!isOpen && !isVisible) return null;
 
   const handleChange = (key: keyof Settings, value: string | boolean) => {
     let parsedValue: number | boolean = value as boolean;
     
     if (typeof value === 'string') {
-        // Allow empty string for typing
         if (value === '') {
-            // We'll handle empty string by not updating state directly here if strictly typed number
-            // But typically for controlled inputs we might need a local state buffer or accept the parse result
-            // Here assuming the parent handles re-render, we pass 0 or keep current if invalid
-            // Simple approach: parse, if NaN use 0
-            parsedValue = parseInt(value, 10);
-            if (isNaN(parsedValue)) parsedValue = 0;
+             // Handle empty input gracefully (e.g. treat as 0 during typing)
+            parsedValue = 0;
         } else {
             parsedValue = parseInt(value, 10);
             if (isNaN(parsedValue)) parsedValue = 0;
         }
     }
 
-    onUpdateSettings({
-      ...settings,
+    setLocalSettings(prev => ({
+      ...prev,
       [key]: parsedValue,
-    });
+    }));
   };
 
-  const InputRow = ({ label, value, unit, field, min = 1 }: { label: string, value: number, unit: string, field: keyof Settings, min?: number }) => (
-    <div className="flex items-center justify-between py-1 group">
-      <label className="text-slate-700 font-medium text-base sm:text-lg group-hover:text-indigo-600 transition-colors duration-200">{label}</label>
-      <div className="flex items-center justify-end gap-3 w-[180px]">
-        <input
-          type="number"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          min={min}
-          value={value.toString()} // Convert to string to remove leading zeros naturally
-          onChange={(e) => handleChange(field, e.target.value)}
-          className="w-24 text-center bg-slate-50 border border-slate-200 rounded-lg py-2 px-2 text-lg font-mono text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm hover:border-slate-300"
-        />
-        <span className="text-base font-medium text-slate-400 w-10 text-right">{unit}</span>
-      </div>
-    </div>
-  );
+  const handleSave = () => {
+    onUpdateSettings(localSettings);
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-      {/* Backdrop with blur */}
+      {/* Backdrop with blur and animation - Click event REMOVED */}
       <div 
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-backdrop-enter" 
-        onClick={onClose}
+        className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isOpen ? 'animate-backdrop-enter' : 'animate-backdrop-exit'}`} 
       />
       
-      {/* Modal Content */}
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden animate-modal-enter max-h-[90vh] flex flex-col">
+      {/* Modal Content with animation */}
+      <div 
+        className={`relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col ${isOpen ? 'animate-modal-enter' : 'animate-modal-exit'}`}
+        onAnimationEnd={handleAnimationEnd}
+      >
         
         {/* Header */}
         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-10">
@@ -87,31 +119,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="space-y-4">
             <InputRow 
                 label="专注时间" 
-                value={settings.focusDurationMinutes} 
+                value={localSettings.focusDurationMinutes} 
                 unit="分钟" 
-                field="focusDurationMinutes" 
+                onChange={(val) => handleChange('focusDurationMinutes', val)}
             />
             
             <InputRow 
                 label="最小间隔" 
-                value={settings.minIntervalMinutes} 
+                value={localSettings.minIntervalMinutes} 
                 unit="分钟" 
-                field="minIntervalMinutes" 
+                onChange={(val) => handleChange('minIntervalMinutes', val)}
             />
 
             <InputRow 
                 label="最大间隔" 
-                value={settings.maxIntervalMinutes} 
+                value={localSettings.maxIntervalMinutes} 
                 unit="分钟" 
-                field="maxIntervalMinutes" 
-                min={settings.minIntervalMinutes}
+                min={localSettings.minIntervalMinutes}
+                onChange={(val) => handleChange('maxIntervalMinutes', val)}
             />
 
             <InputRow 
                 label="微休息时间" 
-                value={settings.microBreakSeconds} 
+                value={localSettings.microBreakSeconds} 
                 unit="秒" 
-                field="microBreakSeconds" 
+                onChange={(val) => handleChange('microBreakSeconds', val)}
             />
           </div>
 
@@ -127,9 +159,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="space-y-4">
             <InputRow 
                 label="长休息时间" 
-                value={settings.longBreakMinutes} 
+                value={localSettings.longBreakMinutes} 
                 unit="分钟" 
-                field="longBreakMinutes" 
+                onChange={(val) => handleChange('longBreakMinutes', val)}
             />
 
             {/* Toggle */}
@@ -139,7 +171,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                  <label className="relative inline-flex items-center cursor-pointer">
                     <input 
                       type="checkbox" 
-                      checked={settings.showBreakCountdown} 
+                      checked={localSettings.showBreakCountdown} 
                       onChange={(e) => handleChange('showBreakCountdown', e.target.checked)}
                       className="sr-only peer" 
                     />
@@ -154,10 +186,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Footer */}
         <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end sticky bottom-0 z-10">
             <button 
-                onClick={onClose}
+                onClick={handleSave}
                 className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium py-3 sm:py-2.5 px-8 rounded-xl transition-all shadow-lg shadow-indigo-200 active:scale-95 active:shadow-none"
             >
-                完成设置
+                保存设置
             </button>
         </div>
       </div>
