@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Settings, TimerStatus, DEFAULT_SETTINGS, TimeUnit } from './types';
+import { Settings, TimerStatus, DEFAULT_SETTINGS, TimeUnit, FocusRecord, Tag, DEFAULT_TAGS } from './types';
 import { SettingsModal } from './components/SettingsModal';
 import { CircularProgress } from './components/CircularProgress';
+import { Statistics } from './components/Statistics';
+import { TagSelector } from './components/TagSelector';
 import { playMindfulnessBell, playSessionEndSound } from './utils/sound';
-import { Settings as SettingsIcon, Play, Pause, RotateCcw, Volume2 } from 'lucide-react';
+import { Settings as SettingsIcon, Play, Pause, RotateCcw, Volume2, PieChart } from 'lucide-react';
 
 const STORAGE_KEY = 'focusFlowState';
+const HISTORY_KEY = 'focusFlowHistory';
+const TAGS_KEY = 'focusFlowTags';
 
 const formatTime = (seconds: number) => {
   const m = Math.floor(seconds / 60);
@@ -33,7 +37,6 @@ const getInitialState = () => {
       if (status === TimerStatus.RUNNING) {
         nextBellCountdown -= elapsed;
         // If bell was missed while away, reset it to a short delay (5s) to resume rhythm
-        // rather than firing immediately (which might be blocked by browser autoplay policy)
         if (nextBellCountdown <= 0) {
            nextBellCountdown = 5; 
         }
@@ -47,7 +50,7 @@ const getInitialState = () => {
       }
     }
 
-    // Merge saved settings with default settings to ensure new fields (Units) exist if loading from old storage
+    // Merge saved settings with default settings
     const mergedSettings = { ...DEFAULT_SETTINGS, ...(saved.settings || {}) };
 
     return {
@@ -62,17 +65,31 @@ const getInitialState = () => {
   }
 };
 
-// Load state once on module load to avoid repetitive parsing during renders
+// Load state once on module load
 const loadedInitialState = getInitialState();
+
+// Load History and Tags
+const loadHistory = (): FocusRecord[] => {
+    try {
+        const str = localStorage.getItem(HISTORY_KEY);
+        return str ? JSON.parse(str) : [];
+    } catch { return []; }
+};
+const loadTags = (): Tag[] => {
+    try {
+        const str = localStorage.getItem(TAGS_KEY);
+        return str ? JSON.parse(str) : DEFAULT_TAGS;
+    } catch { return DEFAULT_TAGS; }
+};
 
 export default function App() {
   // --- State ---
   const [settings, setSettings] = useState<Settings>(loadedInitialState?.settings || DEFAULT_SETTINGS);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
   
   const [status, setStatus] = useState<TimerStatus>(loadedInitialState?.status || TimerStatus.IDLE);
   
-  // Initialize time based on saved state OR default to settings duration
   const [globalTimeLeft, setGlobalTimeLeft] = useState(
     loadedInitialState ? loadedInitialState.globalTimeLeft : DEFAULT_SETTINGS.focusDurationMinutes * 60
   ); 
@@ -82,50 +99,55 @@ export default function App() {
   ); 
   
   const [microBreakActive, setMicroBreakActive] = useState(false);
+
+  // --- Data State ---
+  const [history, setHistory] = useState<FocusRecord[]>(loadHistory);
+  const [tags, setTags] = useState<Tag[]>(loadTags);
+  const [selectedTagId, setSelectedTagId] = useState<string>(tags[0]?.id || '1');
+
+  // Save History/Tags when changed
+  useEffect(() => { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); }, [history]);
+  useEffect(() => { localStorage.setItem(TAGS_KEY, JSON.stringify(tags)); }, [tags]);
   
   // --- Android Back Gesture State ---
   const [showExitToast, setShowExitToast] = useState(false);
   const lastBackPressTime = useRef<number>(0);
   const isSettingsOpenRef = useRef(isSettingsOpen);
+  const isStatsOpenRef = useRef(isStatsOpen);
 
-  // Sync ref with state so event listener can access current value
-  useEffect(() => {
-    isSettingsOpenRef.current = isSettingsOpen;
-  }, [isSettingsOpen]);
+  // Sync ref with state
+  useEffect(() => { isSettingsOpenRef.current = isSettingsOpen; }, [isSettingsOpen]);
+  useEffect(() => { isStatsOpenRef.current = isStatsOpen; }, [isStatsOpen]);
 
   // Refs for timer logic
   const timerRef = useRef<number | null>(null);
   
   // --- Android Back Gesture & History Logic ---
   useEffect(() => {
-    // Create a history entry to trap the back button
-    // Using window.location.pathname keeps current url but adds a state entry
     window.history.pushState(null, '', window.location.pathname);
 
     const handlePopState = () => {
       const now = Date.now();
 
-      // 1. If Settings Modal is open, close it and stay in app
+      // 1. If Modals are open, close them
       if (isSettingsOpenRef.current) {
         setIsSettingsOpen(false);
-        // Push state again to re-arm the trap (ensure we always have a "forward" state to pop)
+        window.history.pushState(null, '', window.location.pathname);
+        return;
+      }
+      if (isStatsOpenRef.current) {
+        setIsStatsOpen(false);
         window.history.pushState(null, '', window.location.pathname);
         return;
       }
 
       // 2. Main Screen Logic
       if (now - lastBackPressTime.current < 2000) {
-        // Double press detected: Allow exit
-        // We are currently at the 'popped' state (index N-1).
-        // Calling back() sends us to N-2, which effectively exits the PWA/Tab history
         window.history.back();
       } else {
-        // First press: Show toast and trap
         lastBackPressTime.current = now;
         setShowExitToast(true);
         setTimeout(() => setShowExitToast(false), 2000);
-        
-        // Push state again to re-arm the trap
         window.history.pushState(null, '', window.location.pathname);
       }
     };
@@ -137,7 +159,6 @@ export default function App() {
   }, []);
 
   // --- Persistence Effect ---
-  // Save state to localStorage whenever it changes
   useEffect(() => {
     const stateToSave = {
       settings,
@@ -157,7 +178,6 @@ export default function App() {
     return Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec;
   }, [settings.minIntervalMinutes, settings.maxIntervalMinutes]);
 
-  // Reset / Init
   const resetTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     setStatus(TimerStatus.IDLE);
@@ -166,14 +186,12 @@ export default function App() {
     setMicroBreakActive(false);
   }, [settings.focusDurationMinutes]);
 
-  // Update time when settings change ONLY if IDLE
   useEffect(() => {
     if (status === TimerStatus.IDLE) {
       setGlobalTimeLeft(settings.focusDurationMinutes * 60);
     }
   }, [settings.focusDurationMinutes, status]);
 
-  // Start Timer
   const startTimer = () => {
     if (status === TimerStatus.IDLE || status === TimerStatus.FINISHED) {
       const initialInterval = getRandomIntervalSeconds();
@@ -195,6 +213,24 @@ export default function App() {
     }
   };
 
+  // Record Saving Logic
+  const saveFocusSession = useCallback(() => {
+      const duration = settings.focusDurationMinutes * 60;
+      const endTime = Date.now();
+      const startTime = endTime - (duration * 1000);
+      const tag = tags.find(t => t.id === selectedTagId);
+
+      const newRecord: FocusRecord = {
+          id: crypto.randomUUID(),
+          startTime,
+          endTime,
+          durationSeconds: duration,
+          tagId: selectedTagId,
+          tagName: tag ? tag.name : '未分类'
+      };
+      setHistory(prev => [...prev, newRecord]);
+  }, [settings.focusDurationMinutes, selectedTagId, tags]);
+
   // Main Tick Loop
   useEffect(() => {
     if (status === TimerStatus.RUNNING) {
@@ -203,6 +239,10 @@ export default function App() {
           // 1. Check Global End
           if (prev <= 1) {
             clearInterval(timerRef.current!);
+            
+            // SAVE SESSION HERE
+            saveFocusSession();
+            
             setStatus(settings.showBreakCountdown ? TimerStatus.BREAK : TimerStatus.FINISHED);
             playSessionEndSound();
             return settings.showBreakCountdown ? settings.longBreakMinutes * 60 : 0;
@@ -239,7 +279,7 @@ export default function App() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [status, settings, getRandomIntervalSeconds]); 
+  }, [status, settings, getRandomIntervalSeconds, saveFocusSession]); 
 
 
   // --- Render Helpers ---
@@ -262,12 +302,8 @@ export default function App() {
     return "专注中";
   };
 
-  // Helpers for range display
   const formatRangeValue = (minutes: number, unit: TimeUnit) => {
-    if (unit === 'sec') {
-      return Math.round(minutes * 60);
-    }
-    // If minutes, maybe 1 decimal is enough, usually it's whole numbers
+    if (unit === 'sec') return Math.round(minutes * 60);
     return parseFloat(minutes.toFixed(1));
   };
 
@@ -284,6 +320,13 @@ export default function App() {
       return `${minVal} ${minLabel} - ${maxVal} ${maxLabel}`;
   };
 
+  // Tag Management
+  const handleAddTag = (name: string, color: string) => {
+      const newTag: Tag = { id: crypto.randomUUID(), name, color };
+      setTags(prev => [...prev, newTag]);
+      setSelectedTagId(newTag.id);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
       
@@ -291,7 +334,17 @@ export default function App() {
       <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-100 rounded-full blur-3xl opacity-50 pointer-events-none"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-emerald-100 rounded-full blur-3xl opacity-50 pointer-events-none"></div>
 
-      {/* Top Bar */}
+      {/* Top Left: Stats */}
+      <div className="absolute top-6 left-6 z-20">
+        <button 
+          onClick={() => setIsStatsOpen(true)}
+          className="p-3 bg-indigo-600 text-white rounded-full shadow-md hover:bg-indigo-700 transition-all active:scale-95"
+        >
+          <PieChart size={24} />
+        </button>
+      </div>
+
+      {/* Top Right: Settings */}
       <div className="absolute top-6 right-6 z-20">
         <button 
           onClick={() => setIsSettingsOpen(true)}
@@ -327,7 +380,7 @@ export default function App() {
              </div>
           </CircularProgress>
 
-          {/* Micro Break Toast / Indicator */}
+          {/* Micro Break Indicator */}
           <div 
             className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full h-full rounded-full bg-indigo-600/90 flex items-center justify-center text-white backdrop-blur-sm transition-all duration-500 ${microBreakActive ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}
           >
@@ -337,6 +390,21 @@ export default function App() {
              </div>
           </div>
         </div>
+
+        {/* Tag Selector - Show when not running or paused to select, show static when running */}
+        {status === TimerStatus.IDLE ? (
+            <TagSelector 
+                tags={tags} 
+                selectedTagId={selectedTagId} 
+                onSelect={setSelectedTagId} 
+                onAddTag={handleAddTag}
+            />
+        ) : (
+            <div className="flex items-center gap-2 px-4 py-2 bg-white/60 rounded-full border border-slate-100">
+                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: tags.find(t => t.id === selectedTagId)?.color }}></div>
+                 <span className="text-sm font-medium text-slate-600">{tags.find(t => t.id === selectedTagId)?.name || '未分类'}</span>
+            </div>
+        )}
 
         {/* Info Cards */}
         {status !== TimerStatus.IDLE && status !== TimerStatus.FINISHED && status !== TimerStatus.BREAK && status !== TimerStatus.BREAK_PAUSED && (
@@ -357,7 +425,7 @@ export default function App() {
         )}
 
         {/* Controls */}
-        <div className="flex items-center gap-6 mt-4">
+        <div className="flex items-center gap-6 mt-2">
           {(status === TimerStatus.RUNNING || status === TimerStatus.BREAK) ? (
              <button 
                onClick={pauseTimer}
@@ -388,6 +456,13 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)} 
         settings={settings}
         onUpdateSettings={setSettings}
+      />
+
+      <Statistics 
+         isOpen={isStatsOpen}
+         onClose={() => setIsStatsOpen(false)}
+         records={history}
+         tags={tags}
       />
       
       {/* Android Back Exit Toast */}
