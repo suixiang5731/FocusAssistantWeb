@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Settings, TimerStatus, DEFAULT_SETTINGS, TimeUnit } from './types';
 import { SettingsModal } from './components/SettingsModal';
 import { CircularProgress } from './components/CircularProgress';
@@ -102,7 +102,7 @@ export default function App() {
     // Using window.location.pathname keeps current url but adds a state entry
     window.history.pushState(null, '', window.location.pathname);
 
-    const handlePopState = (event: PopStateEvent) => {
+    const handlePopState = () => {
       const now = Date.now();
 
       // 1. If Settings Modal is open, close it and stay in app
