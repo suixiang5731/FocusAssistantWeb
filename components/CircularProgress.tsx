@@ -4,6 +4,7 @@ interface CircularProgressProps {
   totalSeconds: number;
   currentSeconds: number;
   color?: string;
+  duration?: number;
   children?: React.ReactNode;
 }
 
@@ -11,6 +12,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
   totalSeconds,
   currentSeconds,
   color = "stroke-indigo-600",
+  duration = 1000,
   children
 }) => {
   const radius = 120;
@@ -25,7 +27,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
       <svg
         height={radius * 2}
         width={radius * 2}
-        className="rotate-[-90deg] transform transition-all duration-1000 ease-linear"
+        className="rotate-[-90deg] transform"
       >
         <circle
           stroke="#e2e8f0"
@@ -40,12 +42,17 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
           fill="transparent"
           strokeWidth={stroke}
           strokeDasharray={circumference + ' ' + circumference}
-          style={{ strokeDashoffset }}
+          style={{ 
+            strokeDashoffset,
+            transitionDuration: `${duration}ms`,
+            transitionProperty: 'stroke-dashoffset',
+            transitionTimingFunction: 'linear'
+          }}
           strokeLinecap="round"
           r={normalizedRadius}
           cx={radius}
           cy={radius}
-          className={`${color} transition-all duration-500`}
+          className={`${color} transition-colors duration-300`}
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center flex-col text-slate-800">

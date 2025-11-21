@@ -46,7 +46,7 @@ const InputRow: React.FC<InputRowProps> = ({ label, value, currentUnit, min = 0,
         inputMode="decimal"
         min={min}
         step={currentUnit === 'min' ? "0.1" : "1"}
-        value={value.toString()} 
+        value={isNaN(value) ? '' : value.toString()} 
         onChange={(e) => onChange(e.target.value)}
         className="w-24 text-center bg-slate-50 border border-slate-200 rounded-lg py-2 px-2 text-lg font-mono text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm hover:border-slate-300"
       />
@@ -74,9 +74,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
-      setLocalSettings(settings);
-      // We don't reset units here to persist user preference during session, 
-      // or you can reset them if desired: setUnits(DEFAULT_UNITS);
+      // Create a clean copy to avoid reference issues
+      setLocalSettings(JSON.parse(JSON.stringify(settings)));
     }
   }, [isOpen, settings]);
 
@@ -103,7 +102,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Helper to convert input string back to stored value
   const calculateNewStoredValue = (inputValue: string, baseUnit: TimeUnit, displayUnit: TimeUnit): number => {
     let val = parseFloat(inputValue);
-    if (isNaN(val)) val = 0;
+    if (isNaN(val)) return 0; // Return 0 instead of NaN to keep state valid
 
     if (baseUnit === displayUnit) return val;
     if (baseUnit === 'min' && displayUnit === 'sec') return val / 60;
@@ -112,6 +111,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const updateSetting = (key: keyof Settings, val: string, baseUnit: TimeUnit, displayUnit: TimeUnit) => {
+    // Allow empty string for better typing experience, handled in InputRow value prop
+    if (val === '') {
+        setLocalSettings(prev => ({ ...prev, [key]: NaN }));
+        return;
+    }
     const newValue = calculateNewStoredValue(val, baseUnit, displayUnit);
     setLocalSettings(prev => ({ ...prev, [key]: newValue }));
   };
@@ -124,16 +128,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleSave = () => {
-    onUpdateSettings(localSettings);
+    // Ensure no NaNs are saved
+    const cleanSettings = { ...localSettings };
+    (Object.keys(cleanSettings) as Array<keyof Settings>).forEach(key => {
+        if (typeof cleanSettings[key] === 'number' && isNaN(cleanSettings[key] as number)) {
+             (cleanSettings as any)[key] = (DEFAULT_SETTINGS as any)[key];
+        }
+    });
+    onUpdateSettings(cleanSettings);
     onClose();
   };
 
   const handleReset = () => {
-    if (window.confirm('确定要恢复默认设置吗？')) {
-        // Use spread to ensure new object references are passed, triggering re-render
-        setLocalSettings({ ...DEFAULT_SETTINGS });
-        setUnits({ ...DEFAULT_UNITS });
-    }
+    // Deep copy defaults to ensure state update triggers re-render
+    setLocalSettings(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)));
+    setUnits({ ...DEFAULT_UNITS });
   };
 
   return (

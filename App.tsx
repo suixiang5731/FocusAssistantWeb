@@ -130,11 +130,17 @@ export default function App() {
       setStatus(TimerStatus.RUNNING);
     } else if (status === TimerStatus.PAUSED) {
       setStatus(TimerStatus.RUNNING);
+    } else if (status === TimerStatus.BREAK_PAUSED) {
+      setStatus(TimerStatus.BREAK);
     }
   };
 
   const pauseTimer = () => {
-    setStatus(TimerStatus.PAUSED);
+    if (status === TimerStatus.BREAK) {
+      setStatus(TimerStatus.BREAK_PAUSED);
+    } else {
+      setStatus(TimerStatus.PAUSED);
+    }
   };
 
   // Main Tick Loop
@@ -186,18 +192,19 @@ export default function App() {
 
   // --- Render Helpers ---
   const getProgressColor = () => {
-    if (status === TimerStatus.BREAK) return "stroke-emerald-500";
+    if (status === TimerStatus.BREAK || status === TimerStatus.BREAK_PAUSED) return "stroke-emerald-500";
     if (status === TimerStatus.FINISHED) return "stroke-slate-400";
     return "stroke-indigo-600";
   };
 
   const getTotalTimeForProgress = () => {
-    if (status === TimerStatus.BREAK) return settings.longBreakMinutes * 60;
+    if (status === TimerStatus.BREAK || status === TimerStatus.BREAK_PAUSED) return settings.longBreakMinutes * 60;
     return settings.focusDurationMinutes * 60;
   };
   
   const getStatusText = () => {
     if (status === TimerStatus.BREAK) return "休息时间";
+    if (status === TimerStatus.BREAK_PAUSED) return "休息暂停";
     if (status === TimerStatus.FINISHED) return "已完成";
     if (status === TimerStatus.PAUSED) return "已暂停";
     return "专注中";
@@ -234,9 +241,10 @@ export default function App() {
             totalSeconds={getTotalTimeForProgress()} 
             currentSeconds={globalTimeLeft}
             color={getProgressColor()}
+            duration={status === TimerStatus.IDLE ? 0 : 1000}
           >
              <div className="text-center flex flex-col items-center">
-               <span className={`text-5xl font-mono font-bold tracking-tighter ${status === TimerStatus.BREAK ? 'text-emerald-600' : 'text-slate-800'}`}>
+               <span className={`text-5xl font-mono font-bold tracking-tighter ${status === TimerStatus.BREAK || status === TimerStatus.BREAK_PAUSED ? 'text-emerald-600' : 'text-slate-800'}`}>
                  {formatTime(globalTimeLeft)}
                </span>
                <span className="text-slate-500 mt-2 font-medium uppercase tracking-widest text-xs">
@@ -257,7 +265,7 @@ export default function App() {
         </div>
 
         {/* Info Cards */}
-        {status !== TimerStatus.IDLE && status !== TimerStatus.FINISHED && status !== TimerStatus.BREAK && (
+        {status !== TimerStatus.IDLE && status !== TimerStatus.FINISHED && status !== TimerStatus.BREAK && status !== TimerStatus.BREAK_PAUSED && (
            <div className="bg-white/60 backdrop-blur-sm rounded-xl p-4 w-full flex justify-between items-center shadow-sm border border-white/50">
               <div className="flex flex-col">
                  <span className="text-xs text-slate-400 uppercase font-bold">下一次提醒</span>
@@ -279,14 +287,14 @@ export default function App() {
           {(status === TimerStatus.RUNNING || status === TimerStatus.BREAK) ? (
              <button 
                onClick={pauseTimer}
-               className="w-20 h-20 bg-amber-400 hover:bg-amber-500 text-white rounded-full shadow-lg hover:shadow-amber-200/50 flex items-center justify-center transition-all active:scale-95"
+               className={`w-20 h-20 text-white rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95 ${status === TimerStatus.BREAK ? 'bg-emerald-500 hover:bg-emerald-600 hover:shadow-emerald-200/50' : 'bg-amber-400 hover:bg-amber-500 hover:shadow-amber-200/50'}`}
              >
                <Pause size={32} fill="currentColor" />
              </button>
           ) : (
              <button 
                onClick={startTimer}
-               className="w-20 h-20 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg hover:shadow-indigo-200/50 flex items-center justify-center transition-all active:scale-95"
+               className={`w-20 h-20 text-white rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95 ${status === TimerStatus.BREAK_PAUSED ? 'bg-emerald-500 hover:bg-emerald-600 hover:shadow-emerald-200/50' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-indigo-200/50'}`}
              >
                <Play size={32} fill="currentColor" className="ml-1" />
              </button>

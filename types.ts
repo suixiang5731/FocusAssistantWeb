@@ -2,6 +2,7 @@ export enum TimerStatus {
   IDLE = 'IDLE',
   RUNNING = 'RUNNING',
   PAUSED = 'PAUSED',
+  BREAK_PAUSED = 'BREAK_PAUSED',
   BREAK = 'BREAK',
   FINISHED = 'FINISHED'
 }
