@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Settings, TimerStatus, DEFAULT_SETTINGS } from './types';
+import { Settings, TimerStatus, DEFAULT_SETTINGS, TimeUnit } from './types';
 import { SettingsModal } from './components/SettingsModal';
 import { CircularProgress } from './components/CircularProgress';
 import { playMindfulnessBell, playSessionEndSound } from './utils/sound';
@@ -47,8 +47,11 @@ const getInitialState = () => {
       }
     }
 
+    // Merge saved settings with default settings to ensure new fields (Units) exist if loading from old storage
+    const mergedSettings = { ...DEFAULT_SETTINGS, ...(saved.settings || {}) };
+
     return {
-      settings: saved.settings,
+      settings: mergedSettings,
       status,
       globalTimeLeft: Math.floor(globalTimeLeft),
       nextBellCountdown: Math.floor(nextBellCountdown),
@@ -111,7 +114,6 @@ export default function App() {
     setGlobalTimeLeft(settings.focusDurationMinutes * 60);
     setNextBellCountdown(0);
     setMicroBreakActive(false);
-    // Clear storage for a clean slate logic if desired, but updating state triggers save anyway
   }, [settings.focusDurationMinutes]);
 
   // Update time when settings change ONLY if IDLE
@@ -210,6 +212,28 @@ export default function App() {
     return "专注中";
   };
 
+  // Helpers for range display
+  const formatRangeValue = (minutes: number, unit: TimeUnit) => {
+    if (unit === 'sec') {
+      return Math.round(minutes * 60);
+    }
+    // If minutes, maybe 1 decimal is enough, usually it's whole numbers
+    return parseFloat(minutes.toFixed(1));
+  };
+
+  const renderRandomRange = () => {
+      const minVal = formatRangeValue(settings.minIntervalMinutes, settings.minIntervalUnit);
+      const maxVal = formatRangeValue(settings.maxIntervalMinutes, settings.maxIntervalUnit);
+      
+      const minLabel = settings.minIntervalUnit === 'min' ? '分钟' : '秒';
+      const maxLabel = settings.maxIntervalUnit === 'min' ? '分钟' : '秒';
+
+      if (settings.minIntervalUnit === settings.maxIntervalUnit) {
+          return `${minVal} - ${maxVal} ${minLabel}`;
+      }
+      return `${minVal} ${minLabel} - ${maxVal} ${maxLabel}`;
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
       
@@ -276,7 +300,7 @@ export default function App() {
               <div className="flex flex-col text-right">
                  <span className="text-xs text-slate-400 uppercase font-bold">随机范围</span>
                  <span className="text-sm font-medium text-slate-600">
-                    {settings.minIntervalMinutes} - {settings.maxIntervalMinutes} 分钟
+                    {renderRandomRange()}
                  </span>
               </div>
            </div>
