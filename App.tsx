@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Settings, TimerStatus, DEFAULT_SETTINGS, TimeUnit } from './types';
 import { SettingsModal } from './components/SettingsModal';
 import { CircularProgress } from './components/CircularProgress';
