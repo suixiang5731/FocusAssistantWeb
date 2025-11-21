@@ -327,6 +327,19 @@ export default function App() {
       setSelectedTagId(newTag.id);
   };
 
+  // NEW: Delete Tag Logic
+  const handleDeleteTag = (tagId: string) => {
+    setTags(prev => {
+      const newTags = prev.filter(t => t.id !== tagId);
+      // If we deleted the currently selected tag, reset selection to first available or default
+      if (selectedTagId === tagId) {
+         const nextTag = newTags.length > 0 ? newTags[0].id : DEFAULT_TAGS[0].id;
+         setSelectedTagId(nextTag);
+      }
+      return newTags;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
       
@@ -398,6 +411,7 @@ export default function App() {
                 selectedTagId={selectedTagId} 
                 onSelect={setSelectedTagId} 
                 onAddTag={handleAddTag}
+                onDeleteTag={handleDeleteTag}
             />
         ) : (
             <div className="flex items-center gap-2 px-4 py-2 bg-white/60 rounded-full border border-slate-100">
