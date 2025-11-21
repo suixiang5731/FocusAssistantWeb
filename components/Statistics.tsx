@@ -1,9 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { FocusRecord, Tag } from '../types';
-import { X, ChevronRight, Calendar } from 'lucide-react';
-import { format, isSameDay, startOfDay, subDays, getHours, startOfYear, eachDayOfInterval, endOfDay, addDays, isSameMonth } from 'date-fns';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import { zhCN } from 'date-fns/locale';
+import { format, getHours, eachDayOfInterval } from 'date-fns';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, Tooltip } from 'recharts';
 
 interface StatisticsProps {
   isOpen: boolean;
@@ -14,11 +12,27 @@ interface StatisticsProps {
 
 export const Statistics: React.FC<StatisticsProps> = ({ isOpen, onClose, records, tags }) => {
   const [activeTab, setActiveTab] = useState<'day' | 'week' | 'month'>('day');
+  
+  // --- Animation State ---
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsVisible(true);
+    }
+  }, [isOpen]);
+
+  const handleAnimationEnd = () => {
+    if (!isOpen) {
+      setIsVisible(false);
+    }
+  };
 
   // --- Derived Data ---
 
   const todayRecords = useMemo(() => {
-    const today = startOfDay(new Date());
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     return records.filter(r => r.endTime >= today.getTime());
   }, [records]);
 
@@ -48,11 +62,13 @@ export const Statistics: React.FC<StatisticsProps> = ({ isOpen, onClose, records
     if (activeTab === 'day') {
         targetRecords = todayRecords;
     } else if (activeTab === 'week') {
-        const start = subDays(now, 7).getTime();
-        targetRecords = records.filter(r => r.endTime >= start);
+        const start = new Date(now);
+        start.setDate(start.getDate() - 7);
+        targetRecords = records.filter(r => r.endTime >= start.getTime());
     } else {
-        const start = subDays(now, 30).getTime();
-        targetRecords = records.filter(r => r.endTime >= start);
+        const start = new Date(now);
+        start.setDate(start.getDate() - 30);
+        targetRecords = records.filter(r => r.endTime >= start.getTime());
     }
 
     targetRecords.forEach(r => {
@@ -87,7 +103,10 @@ export const Statistics: React.FC<StatisticsProps> = ({ isOpen, onClose, records
   const heatmapData = useMemo(() => {
     // Generate last 365 days or current year
     const end = new Date();
-    const start = startOfYear(end); 
+    const start = new Date(end);
+    start.setFullYear(end.getFullYear(), 0, 1);
+    start.setHours(0, 0, 0, 0);
+
     const days = eachDayOfInterval({ start, end });
     
     const intensityMap: Record<string, number> = {};
@@ -109,10 +128,13 @@ export const Statistics: React.FC<StatisticsProps> = ({ isOpen, onClose, records
   }, [records]);
 
 
-  if (!isOpen) return null;
+  if (!isOpen && !isVisible) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto animate-modal-enter">
+    <div 
+        className={`fixed inset-0 z-50 bg-slate-50 overflow-y-auto ${isOpen ? 'animate-modal-enter' : 'animate-modal-exit'}`}
+        onAnimationEnd={handleAnimationEnd}
+    >
       {/* Header */}
       <div className="sticky top-0 bg-slate-50/90 backdrop-blur-md z-20 px-4 py-4 flex items-center justify-between border-b border-slate-100">
         <button className="text-slate-500 opacity-0">取消</button>
