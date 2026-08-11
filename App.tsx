@@ -8,7 +8,8 @@ import { ShareModal } from './components/ShareModal';
 import { CompletionModal } from './components/CompletionModal';
 import { NoiseControl } from './components/NoiseControl';
 import { playMindfulnessBell, playSessionEndSound } from './utils/sound';
-import { performAutoBackup } from './utils/backup';
+import { performAutoBackup, createBackupObject } from './utils/backup';
+import { uploadToWebDav } from './utils/webdav';
 import { Settings as SettingsIcon, Play, Pause, RotateCcw, Volume2, BarChart2, Share2, Wind } from 'lucide-react';
 
 const STORAGE_KEY = 'focusFlowState';
@@ -126,11 +127,15 @@ export default function App() {
     })
     .reduce((sum, r) => sum + r.durationSeconds, 0);
 
-  // Save History/Tags when changed and trigger Auto Backup if enabled
+  // Save History/Tags when changed and trigger Auto Backup / WebDAV sync if enabled
   useEffect(() => { 
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); 
     if (settings.autoBackupEnabled) {
       performAutoBackup(settings, history, tags);
+    }
+    if (settings.webDavConfig?.enabled && settings.webDavConfig?.autoSync && settings.webDavConfig?.serverUrl && settings.webDavConfig?.username) {
+      const backupData = createBackupObject(settings, history, tags);
+      uploadToWebDav(settings.webDavConfig, backupData).catch(() => {});
     }
   }, [history, settings]);
 

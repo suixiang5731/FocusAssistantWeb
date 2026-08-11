@@ -9,6 +9,25 @@ export enum TimerStatus {
 
 export type TimeUnit = 'min' | 'sec';
 
+export interface WebDavConfig {
+  enabled: boolean;
+  serverUrl: string;   // e.g. https://dav.jianguoyun.com/dav/
+  username: string;
+  password: string;    // application password
+  remotePath: string;  // e.g. /focus_flow_backup.json
+  autoSync: boolean;   // Auto upload after focus session completion
+  lastSyncTime?: number;
+}
+
+export const DEFAULT_WEBDAV_CONFIG: WebDavConfig = {
+  enabled: false,
+  serverUrl: 'https://dav.jianguoyun.com/dav/',
+  username: '',
+  password: '',
+  remotePath: '/focus_flow_backup.json',
+  autoSync: true,
+};
+
 export interface Settings {
   focusDurationMinutes: number;    // Total session length
   focusDurationUnit: TimeUnit;
@@ -27,6 +46,7 @@ export interface Settings {
 
   showBreakCountdown: boolean;     // Toggle for break UI
   autoBackupEnabled: boolean;      // Toggle for automatic backups
+  webDavConfig?: WebDavConfig;     // WebDAV cloud sync configuration
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -47,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
   showBreakCountdown: true,
   autoBackupEnabled: true,
+  webDavConfig: DEFAULT_WEBDAV_CONFIG,
 };
 
 export interface Tag {

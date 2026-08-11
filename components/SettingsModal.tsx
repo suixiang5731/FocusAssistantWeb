@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, DEFAULT_SETTINGS, TimeUnit, FocusRecord, Tag } from '../types';
-import { X, RotateCcw, Download, Upload, ShieldCheck, RefreshCw, CheckCircle2, AlertCircle, Save, Trash2, History } from 'lucide-react';
-import { exportBackupToFile, parseAndValidateBackup, getSnapshotList, deleteSnapshot, performAutoBackup, BackupData, SnapshotEntry } from '../utils/backup';
+import { Settings, DEFAULT_SETTINGS, TimeUnit, FocusRecord, Tag, WebDavConfig, DEFAULT_WEBDAV_CONFIG } from '../types';
+import { X, RotateCcw, Download, Upload, ShieldCheck, RefreshCw, CheckCircle2, AlertCircle, Save, Trash2, History, Cloud, CloudUpload, CloudDownload, Server, Key, User, Folder, Link, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { exportBackupToFile, parseAndValidateBackup, getSnapshotList, deleteSnapshot, performAutoBackup, BackupData, SnapshotEntry, createBackupObject } from '../utils/backup';
+import { WEBDAV_PRESETS, testWebDavConnection, uploadToWebDav, downloadFromWebDav } from '../utils/webdav';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -71,6 +72,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [snapshots, setSnapshots] = useState<SnapshotEntry[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isTestingWebDav, setIsTestingWebDav] = useState(false);
+  const [isUploadingWebDav, setIsUploadingWebDav] = useState(false);
+  const [isDownloadingWebDav, setIsDownloadingWebDav] = useState(false);
+
+  const getWebDavConfig = (): WebDavConfig => {
+    return localSettings.webDavConfig || DEFAULT_WEBDAV_CONFIG;
+  };
+
+  const updateWebDavConfig = (patch: Partial<WebDavConfig>) => {
+    setLocalSettings(prev => ({
+      ...prev,
+      webDavConfig: {
+        ...(prev.webDavConfig || DEFAULT_WEBDAV_CONFIG),
+        ...patch
+      }
+    }));
+  };
+
+  const handleTestWebDav = async () => {
+    const config = getWebDavConfig();
+    setIsTestingWebDav(true);
+    setFeedback(null);
+    const res = await testWebDavConnection(config);
+    setIsTestingWebDav(false);
+    setFeedback({ type: res.success ? 'success' : 'error', message: res.message });
+  };
+
+  const handleUploadWebDav = async () => {
+    const config = getWebDavConfig();
+    setIsUploadingWebDav(true);
+    setFeedback(null);
+    const backupObj = createBackupObject(localSettings, history, tags);
+    const res = await uploadToWebDav(config, backupObj);
+    setIsUploadingWebDav(false);
+    if (res.success && res.timestamp) {
+      updateWebDavConfig({ lastSyncTime: res.timestamp });
+    }
+    setFeedback({ type: res.success ? 'success' : 'error', message: res.message });
+  };
+
+  const handleDownloadWebDav = async () => {
+    const config = getWebDavConfig();
+    setIsDownloadingWebDav(true);
+    setFeedback(null);
+    const res = await downloadFromWebDav(config);
+    setIsDownloadingWebDav(false);
+    if (res.success && res.data) {
+      onImportData(res.data);
+      if (res.data.settings) {
+        setLocalSettings({ ...DEFAULT_SETTINGS, ...res.data.settings });
+      }
+      setFeedback({ type: 'success', message: res.message });
+    } else {
+      setFeedback({ type: 'error', message: res.message });
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -436,6 +494,187 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 className="hidden" 
               />
             </div>
+          </div>
+
+          <div className="border-t border-slate-100"></div>
+
+          {/* Section 4: WebDAV Cloud Sync */}
+          <div className="space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Cloud size={18} className="text-teal-600" />
+                <span className="text-xs font-semibold text-slate-800 uppercase tracking-wider">WebDAV 云端同步</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={getWebDavConfig().enabled} 
+                  onChange={(e) => updateWebDavConfig({ enabled: e.target.checked })}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600 hover:bg-slate-300 transition-colors"></div>
+              </label>
+            </div>
+
+            {getWebDavConfig().enabled && (
+              <div className="space-y-3 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
+                
+                {/* Preset Dropdown */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600 flex items-center justify-between">
+                    <span>网盘类型预设</span>
+                    <span className="text-[10px] text-teal-600 font-mono">WebDAV 协议</span>
+                  </label>
+                  <select
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val) {
+                        updateWebDavConfig({ serverUrl: val });
+                      }
+                    }}
+                    value={WEBDAV_PRESETS.find(p => p.url === getWebDavConfig().serverUrl)?.url || ''}
+                    className="w-full bg-white border border-slate-200/80 rounded-xl py-2 px-2.5 text-xs text-slate-800 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                  >
+                    {WEBDAV_PRESETS.map((p, idx) => (
+                      <option key={idx} value={p.url}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  {WEBDAV_PRESETS.find(p => p.url === getWebDavConfig().serverUrl)?.helpText && (
+                    <p className="text-[11px] text-slate-400 mt-1 leading-tight">
+                      💡 {WEBDAV_PRESETS.find(p => p.url === getWebDavConfig().serverUrl)?.helpText}
+                    </p>
+                  )}
+                </div>
+
+                {/* Server URL */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                    <Server size={12} className="text-slate-400" />
+                    <span>服务器 URL</span>
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://dav.jianguoyun.com/dav/"
+                    value={getWebDavConfig().serverUrl}
+                    onChange={(e) => updateWebDavConfig({ serverUrl: e.target.value })}
+                    className="w-full bg-white border border-slate-200/80 rounded-xl py-1.5 px-3 text-xs font-mono text-slate-800 outline-none focus:border-teal-500"
+                  />
+                </div>
+
+                {/* Account & Password */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                      <User size={12} className="text-slate-400" />
+                      <span>账号/邮箱</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. user@example.com"
+                      value={getWebDavConfig().username}
+                      onChange={(e) => updateWebDavConfig({ username: e.target.value })}
+                      className="w-full bg-white border border-slate-200/80 rounded-xl py-1.5 px-2.5 text-xs font-mono text-slate-800 outline-none focus:border-teal-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1 relative">
+                    <label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                      <Key size={12} className="text-slate-400" />
+                      <span>应用授权密码</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="授权密码"
+                        value={getWebDavConfig().password}
+                        onChange={(e) => updateWebDavConfig({ password: e.target.value })}
+                        className="w-full bg-white border border-slate-200/80 rounded-xl py-1.5 pl-2.5 pr-7 text-xs font-mono text-slate-800 outline-none focus:border-teal-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Remote Path */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                    <Folder size={12} className="text-slate-400" />
+                    <span>云端文件路径</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="/focus_flow_backup.json"
+                    value={getWebDavConfig().remotePath}
+                    onChange={(e) => updateWebDavConfig({ remotePath: e.target.value })}
+                    className="w-full bg-white border border-slate-200/80 rounded-xl py-1.5 px-3 text-xs font-mono text-slate-800 outline-none focus:border-teal-500"
+                  />
+                </div>
+
+                {/* Auto Sync Checkbox */}
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs font-medium text-slate-700">完成专注后自动上传同步</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={getWebDavConfig().autoSync} 
+                      onChange={(e) => updateWebDavConfig({ autoSync: e.target.checked })}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-4 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-teal-600 hover:bg-slate-300 transition-colors"></div>
+                  </label>
+                </div>
+
+                {/* Last Sync Info */}
+                {getWebDavConfig().lastSyncTime && (
+                  <div className="text-[11px] font-mono text-slate-400 flex items-center gap-1 pt-0.5">
+                    <Sparkles size={11} className="text-teal-600" />
+                    <span>上次同步时间：{new Date(getWebDavConfig().lastSyncTime!).toLocaleString()}</span>
+                  </div>
+                )}
+
+                {/* Sync Action Buttons */}
+                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleTestWebDav}
+                    disabled={isTestingWebDav}
+                    className="py-2 px-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-[11px] rounded-xl border border-slate-200 transition-all active:scale-95 flex items-center justify-center gap-1"
+                  >
+                    <Link size={12} className={isTestingWebDav ? 'animate-spin text-teal-600' : ''} />
+                    <span>{isTestingWebDav ? '测试中...' : '测试连接'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleUploadWebDav}
+                    disabled={isUploadingWebDav}
+                    className="py-2 px-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-[11px] rounded-xl shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1"
+                  >
+                    <CloudUpload size={12} className={isUploadingWebDav ? 'animate-bounce' : ''} />
+                    <span>{isUploadingWebDav ? '上传中...' : '同步上传'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadWebDav}
+                    disabled={isDownloadingWebDav}
+                    className="py-2 px-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-[11px] rounded-xl shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1"
+                  >
+                    <CloudDownload size={12} className={isDownloadingWebDav ? 'animate-bounce' : ''} />
+                    <span>{isDownloadingWebDav ? '拉取中...' : '云端还原'}</span>
+                  </button>
+                </div>
+
+              </div>
+            )}
           </div>
 
         </div>
