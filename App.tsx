@@ -383,37 +383,39 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#fafaf9] text-slate-900 flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden select-none">
+    <div className="min-h-screen bg-[#fafaf9] text-slate-900 flex flex-col items-center justify-between p-3 sm:p-6 relative overflow-x-hidden select-none">
       
       {/* Subtle Ambient Glow */}
       <div className="absolute top-12 left-1/2 -translate-x-1/2 w-96 h-96 bg-teal-500/5 rounded-full blur-3xl pointer-events-none"></div>
 
       {/* Top Bar Navigation */}
-      <div className="absolute top-6 left-6 right-6 flex items-center justify-between z-20 max-w-2xl mx-auto w-full px-2">
+      <div className="w-full max-w-2xl flex items-center justify-between z-20 px-1 sm:px-2 pt-1 sm:pt-2">
         <button 
           onClick={() => setIsStatsOpen(true)}
-          className="flex items-center gap-2 px-3.5 py-2 bg-white/80 hover:bg-white text-slate-700 hover:text-slate-900 rounded-2xl border border-slate-200/80 shadow-2xs transition-all active:scale-95 text-xs font-semibold"
+          className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 rounded-2xl border border-slate-200/80 shadow-2xs transition-all active:scale-95 text-xs font-semibold shrink-0"
           title="查看统计与复盘"
         >
-          <BarChart2 size={16} className="text-teal-600" />
-          <span>数据复盘</span>
+          <BarChart2 size={16} className="text-teal-600 shrink-0" />
+          <span className="hidden sm:inline">数据复盘</span>
+          <span className="sm:hidden">复盘</span>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <NoiseControl />
 
           <button 
             onClick={() => setIsShareOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-teal-50/90 hover:bg-teal-100 text-teal-800 rounded-2xl border border-teal-200/70 shadow-2xs transition-all active:scale-95 text-xs font-semibold"
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-teal-50/90 hover:bg-teal-100 text-teal-800 rounded-2xl border border-teal-200/70 shadow-2xs transition-all active:scale-95 text-xs font-semibold shrink-0"
             title="一键分享专注卡片海报"
           >
-            <Share2 size={15} className="text-teal-600" />
+            <Share2 size={15} className="text-teal-600 shrink-0" />
             <span className="hidden sm:inline">专注卡片</span>
+            <span className="sm:hidden">卡片</span>
           </button>
 
           <button 
             onClick={() => setIsSettingsOpen(true)}
-            className="p-2.5 bg-white/80 hover:bg-white text-slate-600 hover:text-slate-900 rounded-2xl border border-slate-200/80 shadow-2xs transition-all active:scale-95"
+            className="p-1.5 sm:p-2.5 bg-white/90 hover:bg-white text-slate-600 hover:text-slate-900 rounded-2xl border border-slate-200/80 shadow-2xs transition-all active:scale-95 shrink-0"
             title="参数设置与备份"
           >
             <SettingsIcon size={18} />
@@ -421,7 +423,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="max-w-md w-full flex flex-col items-center gap-7 z-10 pt-8">
+      <div className="max-w-md w-full flex flex-col items-center gap-6 sm:gap-7 z-10 py-4 my-auto">
         
         {/* Header Title */}
         <div className="text-center space-y-1">
