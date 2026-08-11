@@ -478,7 +478,7 @@ export default function App() {
         </div>
 
         {/* Zen Encouraging Quote Banner */}
-        <ZenQuote />
+        {(settings.showZenQuote ?? true) && <ZenQuote />}
 
         {/* Tag Selector */}
         {status === TimerStatus.IDLE ? (

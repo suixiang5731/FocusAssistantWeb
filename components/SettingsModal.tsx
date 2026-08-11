@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Settings, DEFAULT_SETTINGS, TimeUnit, FocusRecord, Tag, WebDavConfig, DEFAULT_WEBDAV_CONFIG } from '../types';
-import { X, RotateCcw, Download, Upload, ShieldCheck, RefreshCw, CheckCircle2, AlertCircle, Save, Trash2, History, Cloud, CloudUpload, CloudDownload, Server, Key, User, Folder, Link, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { X, RotateCcw, Download, Upload, ShieldCheck, RefreshCw, CheckCircle2, AlertCircle, Save, Trash2, History, Cloud, CloudUpload, CloudDownload, Server, Key, User, Folder, Link, Eye, EyeOff, Sparkles, Copy, ClipboardPaste } from 'lucide-react';
 import { exportBackupToFile, parseAndValidateBackup, getSnapshotList, deleteSnapshot, performAutoBackup, BackupData, SnapshotEntry, createBackupObject, clearAllSnapshots, keepOnlyLatestSnapshot } from '../utils/backup';
 import { WEBDAV_PRESETS, testWebDavConnection, uploadToWebDav, downloadFromWebDav } from '../utils/webdav';
 
@@ -293,6 +293,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const handleCopySettingsToClipboard = async () => {
+    try {
+      const configStr = JSON.stringify(localSettings, null, 2);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(configStr);
+        setFeedback({ type: 'success', message: '已成功复制设置 JSON（包含 WebDAV 参数）到剪贴板！可在其他设备选择“剪贴板导入”进行一键同步。' });
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = configStr;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        setFeedback({ type: 'success', message: '已成功复制设置数据到剪贴板！' });
+      }
+    } catch {
+      setFeedback({ type: 'error', message: '复制到剪贴板失败，请检查浏览器权限' });
+    }
+  };
+
+  const handleImportSettingsFromClipboard = async () => {
+    try {
+      let text = '';
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        try {
+          text = await navigator.clipboard.readText();
+        } catch {
+          // Fallback if browser permission is restricted
+        }
+      }
+      
+      if (!text) {
+        const userInput = prompt('请粘贴从其他设备导出的设置 JSON 数据：');
+        if (!userInput) return;
+        text = userInput;
+      }
+
+      const parsed = JSON.parse(text.trim());
+      if (typeof parsed === 'object' && parsed !== null) {
+        const mergedSettings = { ...DEFAULT_SETTINGS, ...parsed };
+        setLocalSettings(mergedSettings);
+        setFeedback({ type: 'success', message: '已成功从剪贴板解析并导入设置参数！点击底部“保存设置”即可生效。' });
+      } else {
+        setFeedback({ type: 'error', message: '剪贴板内容不是有效的设置 JSON 数据' });
+      }
+    } catch {
+      setFeedback({ type: 'error', message: '剪贴板解析失败，请确认是否包含正确的设置 JSON 文本' });
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       <div 
@@ -365,9 +415,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <div className="border-t border-slate-100"></div>
 
-          {/* Section 2: Break Options */}
+          {/* Section 2: Break Options & Appearance */}
           <div className="space-y-3">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">休息偏好</div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">休息与外观偏好</div>
             <InputRow 
                 label="长休息时长" 
                 value={getDisplayValue(localSettings.longBreakMinutes, 'min', localSettings.longBreakUnit)}
@@ -384,6 +434,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       type="checkbox" 
                       checked={localSettings.showBreakCountdown} 
                       onChange={(e) => setLocalSettings(prev => ({...prev, showBreakCountdown: e.target.checked}))}
+                      className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600 hover:bg-slate-300 transition-colors"></div>
+                </label>
+               </div>
+            </div>
+
+            <div className="flex items-center justify-between py-1 group">
+               <label className="text-slate-700 font-medium text-sm sm:text-base group-hover:text-slate-900 transition-colors">显示正念鼓励金句</label>
+               <div className="flex items-center justify-end">
+                 <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={localSettings.showZenQuote ?? true} 
+                      onChange={(e) => setLocalSettings(prev => ({...prev, showZenQuote: e.target.checked}))}
                       className="sr-only peer" 
                     />
                     <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600 hover:bg-slate-300 transition-colors"></div>
@@ -712,6 +777,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               </div>
             )}
+          </div>
+
+          <div className="border-t border-slate-100"></div>
+
+          {/* Section 5: Clipboard Settings Share */}
+          <div className="space-y-2.5">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">跨设备配置复用（剪贴板）</div>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={handleCopySettingsToClipboard}
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-teal-50 hover:bg-teal-100/90 text-teal-800 font-semibold text-xs rounded-xl border border-teal-200/60 transition-all active:scale-95"
+              >
+                <Copy size={14} className="text-teal-600 shrink-0" />
+                <span>复制设置到剪贴板</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleImportSettingsFromClipboard}
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs rounded-xl shadow-2xs transition-all active:scale-95"
+              >
+                <ClipboardPaste size={14} className="shrink-0" />
+                <span>从剪贴板导入设置</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-tight">
+              💡 一键复制所有偏好参数（包含专注时长及 WebDAV 服务器/账号等），在手机或另台设备选择“从剪贴板导入”即可即时同步。
+            </p>
           </div>
 
         </div>

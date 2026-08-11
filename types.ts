@@ -45,6 +45,7 @@ export interface Settings {
   longBreakUnit: TimeUnit;
 
   showBreakCountdown: boolean;     // Toggle for break UI
+  showZenQuote?: boolean;          // Toggle for home page Zen quote
   autoBackupEnabled: boolean;      // Toggle for automatic backups
   webDavConfig?: WebDavConfig;     // WebDAV cloud sync configuration
 }
@@ -66,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   longBreakUnit: 'min',
 
   showBreakCountdown: true,
+  showZenQuote: true,
   autoBackupEnabled: true,
   webDavConfig: DEFAULT_WEBDAV_CONFIG,
 };
