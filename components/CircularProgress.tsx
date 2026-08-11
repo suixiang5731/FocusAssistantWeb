@@ -28,7 +28,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
   const strokeDashoffset = circumference - progress * circumference;
 
   return (
-    <div className="relative flex items-center justify-center p-3">
+    <div className="relative flex items-center justify-center p-2 sm:p-3">
       {/* Automatic Breathing Rhythm Ambient Aura */}
       {isBreathing && (
         <div 
@@ -42,9 +42,8 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
       )}
 
       <svg
-        height={radius * 2}
-        width={radius * 2}
-        className="rotate-[-90deg] transform filter drop-shadow-2xs transition-transform duration-700"
+        viewBox={`0 0 ${radius * 2} ${radius * 2}`}
+        className="w-[210px] h-[210px] xs:w-[240px] xs:h-[240px] sm:w-[270px] sm:h-[270px] rotate-[-90deg] transform filter drop-shadow-2xs transition-transform duration-700"
       >
         {/* Background Track */}
         <circle

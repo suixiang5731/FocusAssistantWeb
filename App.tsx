@@ -388,7 +388,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#fafaf9] text-slate-900 flex flex-col items-center justify-between p-3 sm:p-6 relative overflow-x-hidden select-none">
+    <div className="min-h-[100dvh] bg-[#fafaf9] text-slate-900 flex flex-col items-center justify-between p-3 pb-8 sm:p-6 relative overflow-x-hidden select-none">
       
       {/* Subtle Ambient Glow */}
       <div className="absolute top-12 left-1/2 -translate-x-1/2 w-96 h-96 bg-teal-500/5 rounded-full blur-3xl pointer-events-none"></div>
@@ -428,12 +428,12 @@ export default function App() {
         </div>
       </div>
 
-      <div className="max-w-md w-full flex flex-col items-center gap-6 sm:gap-7 z-10 py-4 my-auto">
+      <div className="max-w-md w-full flex flex-col items-center gap-3.5 sm:gap-7 z-10 py-2 sm:py-4 my-auto">
         
         {/* Header Title */}
-        <div className="text-center space-y-1">
-           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Focus Flow</h1>
-           <p className="text-slate-400 text-xs font-medium">不慌不忙，正念专注</p>
+        <div className="text-center space-y-0.5 sm:space-y-1">
+           <h1 className="text-xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Focus Flow</h1>
+           <p className="text-slate-400 text-[11px] sm:text-xs font-medium">不慌不忙，正念专注</p>
         </div>
 
         {/* Main Circular Timer */}
@@ -447,10 +447,10 @@ export default function App() {
             isFinished={status === TimerStatus.FINISHED}
           >
              <div className="text-center flex flex-col items-center">
-               <span className={`text-4xl sm:text-5xl font-mono font-bold tracking-tight ${status === TimerStatus.BREAK || status === TimerStatus.BREAK_PAUSED ? 'text-teal-700' : 'text-slate-900'}`}>
+               <span className={`text-3xl sm:text-5xl font-mono font-bold tracking-tight ${status === TimerStatus.BREAK || status === TimerStatus.BREAK_PAUSED ? 'text-teal-700' : 'text-slate-900'}`}>
                  {formatTime(globalTimeLeft)}
                </span>
-               <span className="text-slate-500 mt-2.5 font-semibold tracking-wide text-xs bg-slate-100/90 px-3 py-1 rounded-full border border-slate-200/60">
+               <span className="text-slate-500 mt-1.5 sm:mt-2.5 font-semibold tracking-wide text-[11px] sm:text-xs bg-slate-100/90 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full border border-slate-200/60">
                  {getStatusText()}
                </span>
              </div>
@@ -458,8 +458,8 @@ export default function App() {
 
           {/* Automatic Breathing Rhythm Banner */}
           {status === TimerStatus.RUNNING && (
-            <div className="flex items-center gap-2 px-3.5 py-1.5 bg-teal-50/90 text-teal-800 rounded-full border border-teal-200/70 text-xs font-semibold animate-breath-text shadow-2xs mt-1">
-              <Wind size={13} className="text-teal-600 animate-spin" style={{ animationDuration: '8s' }} />
+            <div className="flex items-center gap-2 px-3 py-1 bg-teal-50/90 text-teal-800 rounded-full border border-teal-200/70 text-[11px] sm:text-xs font-semibold animate-breath-text shadow-2xs mt-1">
+              <Wind size={12} className="text-teal-600 animate-spin" style={{ animationDuration: '8s' }} />
               <span>正念呼吸 · 随波吸气... 沉淀呼气</span>
             </div>
           )}
@@ -494,7 +494,7 @@ export default function App() {
 
         {/* Random Bell Next Countdown Info Card */}
         {status !== TimerStatus.IDLE && status !== TimerStatus.FINISHED && status !== TimerStatus.BREAK && status !== TimerStatus.BREAK_PAUSED && (
-           <div className="bg-white/80 backdrop-blur-md rounded-2xl p-3.5 w-full max-w-xs flex justify-between items-center shadow-2xs border border-slate-200/70 text-xs">
+           <div className="bg-white/80 backdrop-blur-md rounded-2xl p-3 w-full max-w-xs flex justify-between items-center shadow-2xs border border-slate-200/70 text-xs">
               <div className="flex flex-col">
                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">下一次正念提醒</span>
                  <span className="text-base font-mono font-bold text-slate-800 mt-0.5">
@@ -511,7 +511,7 @@ export default function App() {
         )}
 
         {/* Controls */}
-        <div className="flex items-center gap-5 mt-1">
+        <div className="flex items-center gap-5 mt-1 pb-3 sm:pb-0">
           {(status === TimerStatus.RUNNING || status === TimerStatus.BREAK) ? (
              <button 
                onClick={pauseTimer}
