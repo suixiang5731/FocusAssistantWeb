@@ -48,7 +48,7 @@ export function exportBackupToFile(settings: Settings, history: FocusRecord[], t
   URL.revokeObjectURL(url);
 }
 
-export function performAutoBackup(settings: Settings, history: FocusRecord[], tags: Tag[]): number | null {
+export function performAutoBackup(settings: Settings, history: FocusRecord[], tags: Tag[], maxSnapshots: number = 5): number | null {
   try {
     const data = createBackupObject(settings, history, tags);
     const now = Date.now();
@@ -57,7 +57,7 @@ export function performAutoBackup(settings: Settings, history: FocusRecord[], ta
     localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify(data));
     localStorage.setItem(AUTO_BACKUP_TIME_KEY, now.toString());
 
-    // Add to snapshot list (keep up to 10 entries max)
+    // Add to snapshot list (keep up to 5 entries max by default)
     const snapshots = getSnapshotList();
     const newEntry: SnapshotEntry = {
       id: `snap_${now}`,
@@ -65,20 +65,43 @@ export function performAutoBackup(settings: Settings, history: FocusRecord[], ta
       data
     };
     
-    // Don't add duplicate if history/tags/settings unchanged within 10 seconds
-    if (snapshots.length > 0 && Math.abs(now - snapshots[0].timestamp) < 10000) {
+    // Throttle: If last snapshot was created within 3 minutes (180,000 ms), update in-place instead of creating a duplicate
+    if (snapshots.length > 0 && Math.abs(now - snapshots[0].timestamp) < 180000) {
       snapshots[0] = newEntry;
     } else {
       snapshots.unshift(newEntry);
     }
 
-    const trimmed = snapshots.slice(0, 10);
+    const trimmed = snapshots.slice(0, maxSnapshots);
     localStorage.setItem(SNAPSHOT_LIST_KEY, JSON.stringify(trimmed));
 
     return now;
   } catch (e) {
     console.error('Auto backup failed', e);
     return null;
+  }
+}
+
+export function clearAllSnapshots(): SnapshotEntry[] {
+  try {
+    localStorage.removeItem(SNAPSHOT_LIST_KEY);
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export function keepOnlyLatestSnapshot(): SnapshotEntry[] {
+  try {
+    const list = getSnapshotList();
+    if (list.length > 0) {
+      const trimmed = [list[0]];
+      localStorage.setItem(SNAPSHOT_LIST_KEY, JSON.stringify(trimmed));
+      return trimmed;
+    }
+    return [];
+  } catch {
+    return [];
   }
 }
 

@@ -7,6 +7,7 @@ import { TagSelector } from './components/TagSelector';
 import { ShareModal } from './components/ShareModal';
 import { CompletionModal } from './components/CompletionModal';
 import { NoiseControl } from './components/NoiseControl';
+import { ZenQuote } from './components/ZenQuote';
 import { playMindfulnessBell, playSessionEndSound } from './utils/sound';
 import { performAutoBackup, createBackupObject } from './utils/backup';
 import { uploadToWebDav } from './utils/webdav';
@@ -475,6 +476,9 @@ export default function App() {
              </div>
           </div>
         </div>
+
+        {/* Zen Encouraging Quote Banner */}
+        <ZenQuote />
 
         {/* Tag Selector */}
         {status === TimerStatus.IDLE ? (

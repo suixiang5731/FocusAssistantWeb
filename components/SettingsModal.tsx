@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Settings, DEFAULT_SETTINGS, TimeUnit, FocusRecord, Tag, WebDavConfig, DEFAULT_WEBDAV_CONFIG } from '../types';
 import { X, RotateCcw, Download, Upload, ShieldCheck, RefreshCw, CheckCircle2, AlertCircle, Save, Trash2, History, Cloud, CloudUpload, CloudDownload, Server, Key, User, Folder, Link, Eye, EyeOff, Sparkles } from 'lucide-react';
-import { exportBackupToFile, parseAndValidateBackup, getSnapshotList, deleteSnapshot, performAutoBackup, BackupData, SnapshotEntry, createBackupObject } from '../utils/backup';
+import { exportBackupToFile, parseAndValidateBackup, getSnapshotList, deleteSnapshot, performAutoBackup, BackupData, SnapshotEntry, createBackupObject, clearAllSnapshots, keepOnlyLatestSnapshot } from '../utils/backup';
 import { WEBDAV_PRESETS, testWebDavConnection, uploadToWebDav, downloadFromWebDav } from '../utils/webdav';
 
 interface SettingsModalProps {
@@ -267,6 +267,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setFeedback({ type: 'success', message: '已删除选中的快照记录' });
   };
 
+  const handleClearAllSnapshots = () => {
+    const updated = clearAllSnapshots();
+    setSnapshots(updated);
+    setFeedback({ type: 'success', message: '已成功清空所有快照记录' });
+  };
+
+  const handleKeepOnlyLatestSnapshot = () => {
+    const updated = keepOnlyLatestSnapshot();
+    setSnapshots(updated);
+    setFeedback({ type: 'success', message: '已精简快照列表，仅保留最新 1 份' });
+  };
+
   const handleCreateManualSnapshot = () => {
     try {
       const ts = performAutoBackup(localSettings, history, tags);
@@ -418,8 +430,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
                 <span className="flex items-center gap-1">
                   <History size={13} />
-                  <span>历史快照列表 ({snapshots.length})</span>
+                  <span>历史快照列表 ({snapshots.length}/5)</span>
                 </span>
+                {snapshots.length > 0 && (
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={handleKeepOnlyLatestSnapshot}
+                      className="text-teal-600 hover:text-teal-700 hover:underline font-semibold"
+                      title="精简旧快照，仅保留最新 1 份"
+                    >
+                      仅留最新
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={handleClearAllSnapshots}
+                      className="text-rose-500 hover:text-rose-600 hover:underline font-semibold"
+                      title="清空所有快照记录"
+                    >
+                      清空快照
+                    </button>
+                  </div>
+                )}
               </div>
 
               {snapshots.length > 0 ? (
@@ -465,6 +498,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   暂无快照记录，可以点击右上角“拍摄新快照”保存
                 </div>
               )}
+              
+              <p className="text-[11px] text-slate-400 leading-tight pt-0.5">
+                💡 自动智能去重与数量精简（最多保留 5 份最新快照，3分钟内变动自动覆盖合并），无需担心占用硬盘空间。
+              </p>
             </div>
 
             {/* Backup/Export & Import JSON Buttons */}
