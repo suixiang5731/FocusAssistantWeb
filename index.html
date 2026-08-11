@@ -11,12 +11,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Focus Flow</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
       body {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         -webkit-tap-highlight-color: transparent;
         touch-action: manipulation;
+      }
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
       }
       /* Custom scrollbar for settings */
       .custom-scrollbar::-webkit-scrollbar {
@@ -60,6 +65,41 @@
       @keyframes modal-exit {
         0% { opacity: 1; transform: scale(1) translateY(0); }
         100% { opacity: 0; transform: scale(0.95) translateY(10px); }
+      }
+
+      /* Breathing Rhythm Aura Animation (4s Inhale, 4s Exhale) */
+      @keyframes breath-ring {
+        0%, 100% { transform: scale(1); opacity: 0.25; }
+        50% { transform: scale(1.12); opacity: 0.65; }
+      }
+
+      @keyframes breath-text {
+        0%, 100% { opacity: 0.6; transform: translateY(0); }
+        50% { opacity: 1; transform: translateY(-1px); }
+      }
+
+      @keyframes completion-pop {
+        0% { transform: scale(0.6); opacity: 0; }
+        50% { transform: scale(1.08); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+
+      @keyframes ring-ripple {
+        0% { transform: scale(0.9); opacity: 0.8; stroke-width: 12px; }
+        100% { transform: scale(1.35); opacity: 0; stroke-width: 1px; }
+      }
+
+      .animate-breath-ring {
+        animation: breath-ring 8s ease-in-out infinite;
+      }
+      .animate-breath-text {
+        animation: breath-text 8s ease-in-out infinite;
+      }
+      .animate-completion-pop {
+        animation: completion-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      }
+      .animate-ring-ripple {
+        animation: ring-ripple 1.8s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
       }
 
       .animate-backdrop-enter {

@@ -1,17 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, DEFAULT_SETTINGS, TimeUnit } from '../types';
-import { X, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Settings, DEFAULT_SETTINGS, TimeUnit, FocusRecord, Tag } from '../types';
+import { X, RotateCcw, Download, Upload, ShieldCheck, RefreshCw, CheckCircle2, AlertCircle, Save, Trash2, History } from 'lucide-react';
+import { exportBackupToFile, parseAndValidateBackup, getSnapshotList, deleteSnapshot, performAutoBackup, BackupData, SnapshotEntry } from '../utils/backup';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: Settings;
   onUpdateSettings: (newSettings: Settings) => void;
+  history: FocusRecord[];
+  tags: Tag[];
+  onImportData: (data: BackupData) => void;
 }
 
 // Configuration to map value keys to their unit keys and base storage units
-// base: 'min' means the value in Settings is stored as minutes
-// base: 'sec' means the value in Settings is stored as seconds
 const FIELD_CONFIG = {
   focusDurationMinutes: { unitKey: 'focusDurationUnit', base: 'min' },
   minIntervalMinutes: { unitKey: 'minIntervalUnit', base: 'min' },
@@ -20,7 +22,6 @@ const FIELD_CONFIG = {
   longBreakMinutes: { unitKey: 'longBreakUnit', base: 'min' },
 } as const;
 
-// Extract InputRow to outside
 interface InputRowProps {
   label: string;
   value: number;
@@ -32,8 +33,8 @@ interface InputRowProps {
 
 const InputRow: React.FC<InputRowProps> = ({ label, value, currentUnit, min = 0, onChange, onToggleUnit }) => (
   <div className="flex items-center justify-between py-1 group">
-    <label className="text-slate-700 font-medium text-base sm:text-lg group-hover:text-indigo-600 transition-colors duration-200">{label}</label>
-    <div className="flex items-center justify-end gap-3 w-[180px]">
+    <label className="text-slate-700 font-medium text-sm sm:text-base group-hover:text-slate-900 transition-colors duration-200">{label}</label>
+    <div className="flex items-center justify-end gap-2 shrink-0">
       <input
         type="number"
         inputMode="decimal"
@@ -41,11 +42,12 @@ const InputRow: React.FC<InputRowProps> = ({ label, value, currentUnit, min = 0,
         step={currentUnit === 'min' ? "0.1" : "1"}
         value={isNaN(value) ? '' : value.toString()} 
         onChange={(e) => onChange(e.target.value)}
-        className="w-24 text-center bg-slate-50 border border-slate-200 rounded-lg py-2 px-2 text-lg font-mono text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm hover:border-slate-300"
+        className="w-20 sm:w-24 text-center bg-slate-50 border border-slate-200/80 rounded-xl py-1.5 px-2 text-base font-mono text-slate-800 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all shadow-xs hover:border-slate-300"
       />
       <button 
+        type="button"
         onClick={onToggleUnit}
-        className="w-10 text-right text-base font-medium text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer select-none focus:outline-none active:scale-95"
+        className="min-w-[44px] px-2 py-1 text-center text-xs sm:text-sm font-semibold text-slate-500 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer select-none focus:outline-none active:scale-95 shrink-0 whitespace-nowrap"
         title="点击切换单位"
       >
         {currentUnit === 'min' ? '分钟' : '秒'}
@@ -59,16 +61,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   onUpdateSettings,
+  history,
+  tags,
+  onImportData,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [localSettings, setLocalSettings] = useState<Settings>(settings);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [snapshots, setSnapshots] = useState<SnapshotEntry[]>([]);
 
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
-      // Create a clean copy to avoid reference issues
-      // Ensure we have all default fields if loading from old state
       setLocalSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(JSON.stringify(settings)) });
+      setSnapshots(getSnapshotList());
+      setFeedback(null);
     }
   }, [isOpen, settings]);
 
@@ -80,31 +89,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen && !isVisible) return null;
 
-  // Helper to convert between stored value and display value
   const getDisplayValue = (storedValue: number, baseUnit: TimeUnit, displayUnit: TimeUnit): number => {
     if (baseUnit === displayUnit) {
-        // Round to avoid floating point artifacts
         return Math.round(storedValue * 100) / 100;
     }
-    // Base is min, Display is sec -> * 60
     if (baseUnit === 'min' && displayUnit === 'sec') return Math.round(storedValue * 60);
-    // Base is sec, Display is min -> / 60
     if (baseUnit === 'sec' && displayUnit === 'min') return parseFloat((storedValue / 60).toFixed(2));
-    
     return storedValue;
   };
 
-  // Helper to calculate new stored value based on input
   const calculateStoredValueFromInput = (inputValue: string, baseUnit: TimeUnit, displayUnit: TimeUnit): number => {
     let val = parseFloat(inputValue);
     if (isNaN(val)) return 0;
-
     if (baseUnit === displayUnit) return val;
-    // Input is in Sec, Base is Min -> / 60
     if (baseUnit === 'min' && displayUnit === 'sec') return val / 60;
-    // Input is in Min, Base is Sec -> * 60
     if (baseUnit === 'sec' && displayUnit === 'min') return val * 60;
-    
     return val;
   };
 
@@ -113,8 +112,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (!conf) return;
 
     const currentUnit = localSettings[conf.unitKey as keyof Settings] as TimeUnit;
-
-    // Allow empty string for better typing experience
     if (val === '') {
         setLocalSettings(prev => ({ ...prev, [key]: NaN }));
         return;
@@ -131,39 +128,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const unitKey = conf.unitKey as keyof Settings;
     const currentUnit = localSettings[unitKey] as TimeUnit;
     const currentStoredValue = localSettings[valueKey] as number;
-    
-    // 1. Get the value currently displayed to the user
     const currentDisplayValue = getDisplayValue(currentStoredValue, conf.base, currentUnit);
-    
-    // 2. Determine new unit
     const nextUnit = currentUnit === 'min' ? 'sec' : 'min';
 
-    // 3. Calculate what the stored value SHOULD be so that the display value remains the SAME
-    // logic: treat 'currentDisplayValue' as if it is measured in 'nextUnit'
     let newStoredValue = 0;
-
     if (conf.base === 'min') {
-        // Base storage is Minutes
-        if (nextUnit === 'sec') {
-            // User sees 'X', switches to 'Seconds'. Now 'X' means 'X seconds'.
-            // Store 'X seconds' as minutes -> X / 60
-            newStoredValue = currentDisplayValue / 60;
-        } else {
-            // User sees 'X', switches to 'Minutes'. Now 'X' means 'X minutes'.
-            // Store 'X minutes' as minutes -> X
-            newStoredValue = currentDisplayValue;
-        }
+        newStoredValue = nextUnit === 'sec' ? currentDisplayValue / 60 : currentDisplayValue;
     } else {
-        // Base storage is Seconds (only microBreak)
-        if (nextUnit === 'sec') {
-             // User sees 'X', switches to 'Seconds'. Now 'X' means 'X seconds'.
-             // Store 'X seconds' as seconds -> X
-             newStoredValue = currentDisplayValue;
-        } else {
-             // User sees 'X', switches to 'Minutes'. Now 'X' means 'X minutes'.
-             // Store 'X minutes' as seconds -> X * 60
-             newStoredValue = currentDisplayValue * 60;
-        }
+        newStoredValue = nextUnit === 'sec' ? currentDisplayValue : currentDisplayValue * 60;
     }
 
     setLocalSettings(prev => ({
@@ -174,7 +146,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleSave = () => {
-    // Ensure no NaNs are saved
     const cleanSettings = { ...localSettings };
     (Object.keys(cleanSettings) as Array<keyof Settings>).forEach(key => {
         const k = key as keyof Settings;
@@ -188,61 +159,133 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleReset = () => {
     setLocalSettings(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)));
+    setFeedback({ type: 'success', message: '已恢复默认设置' });
+  };
+
+  const handleExportBackup = () => {
+    try {
+      exportBackupToFile(localSettings, history, tags);
+      setFeedback({ type: 'success', message: '备份 JSON 已导出并保存到本地' });
+    } catch {
+      setFeedback({ type: 'error', message: '备份导出失败，请重试' });
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const res = parseAndValidateBackup(content);
+      if (res.success && res.data) {
+        onImportData(res.data);
+        if (res.data.settings) {
+          setLocalSettings({ ...DEFAULT_SETTINGS, ...res.data.settings });
+        }
+        setFeedback({ type: 'success', message: `成功导入 ${res.data.history.length} 条记录与 ${res.data.tags.length} 个标签！` });
+      } else {
+        setFeedback({ type: 'error', message: res.error || '解析失败，请检查文件格式' });
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleRestoreSnapshotEntry = (entry: SnapshotEntry) => {
+    if (entry.data) {
+      onImportData(entry.data);
+      if (entry.data.settings) {
+        setLocalSettings({ ...DEFAULT_SETTINGS, ...entry.data.settings });
+      }
+      setFeedback({ type: 'success', message: `已还原 [${new Date(entry.timestamp).toLocaleString()}] 快照！` });
+    }
+  };
+
+  const handleDeleteSnapshotEntry = (id: string) => {
+    const updated = deleteSnapshot(id);
+    setSnapshots(updated);
+    setFeedback({ type: 'success', message: '已删除选中的快照记录' });
+  };
+
+  const handleCreateManualSnapshot = () => {
+    try {
+      const ts = performAutoBackup(localSettings, history, tags);
+      if (ts) {
+        setSnapshots(getSnapshotList());
+        setFeedback({ type: 'success', message: '已为您立即保存当前数据状态为最新快照！' });
+      } else {
+        setFeedback({ type: 'error', message: '保存快照失败，请重试' });
+      }
+    } catch {
+      setFeedback({ type: 'error', message: '生成快照过程出现异常' });
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       <div 
-        className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isOpen ? 'animate-backdrop-enter' : 'animate-backdrop-exit'}`} 
+        className={`absolute inset-0 bg-slate-900/30 backdrop-blur-xs ${isOpen ? 'animate-backdrop-enter' : 'animate-backdrop-exit'}`} 
       />
       
       <div 
-        className={`relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col ${isOpen ? 'animate-modal-enter' : 'animate-modal-exit'}`}
+        className={`relative w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col border border-slate-100 ${isOpen ? 'animate-modal-enter' : 'animate-modal-exit'}`}
         onAnimationEnd={handleAnimationEnd}
       >
         
         {/* Header */}
-        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white/80 backdrop-blur-md sticky top-0 z-10">
-          <h2 className="text-xl font-bold text-slate-800 tracking-tight">计时选项</h2>
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/90 backdrop-blur-md sticky top-0 z-10">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 tracking-tight">计时设置与备份</h2>
+            <p className="text-xs text-slate-500 mt-0.5">定制专属专注节奏与数据管理</p>
+          </div>
           <button 
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all p-2 rounded-full active:scale-90"
+            className="text-slate-400 hover:text-slate-700 hover:bg-slate-100/80 transition-all p-1.5 rounded-full active:scale-90"
           >
-            <X size={24} />
+            <X size={20} />
           </button>
         </div>
 
+        {/* Feedback Alert */}
+        {feedback && (
+          <div className={`mx-6 mt-4 p-3 rounded-xl text-xs flex items-start gap-2.5 ${feedback.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/60' : 'bg-rose-50 text-rose-800 border border-rose-200/60'}`}>
+            {feedback.type === 'success' ? <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-emerald-600" /> : <AlertCircle size={16} className="shrink-0 mt-0.5 text-rose-600" />}
+            <span className="leading-relaxed">{feedback.message}</span>
+          </div>
+        )}
+
         {/* Body */}
-        <div className="p-6 sm:p-8 space-y-6 overflow-y-auto custom-scrollbar">
+        <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
           
-          <div className="space-y-4">
+          {/* Section 1: Focus Durations */}
+          <div className="space-y-3">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">专注与提醒参数</div>
             <InputRow 
-                label="专注时间" 
+                label="专注时长" 
                 value={getDisplayValue(localSettings.focusDurationMinutes, 'min', localSettings.focusDurationUnit)}
                 currentUnit={localSettings.focusDurationUnit}
                 onChange={(val) => updateSetting('focusDurationMinutes', val)}
                 onToggleUnit={() => toggleUnit('focusDurationMinutes')}
             />
-            
             <InputRow 
-                label="最小间隔" 
+                label="提醒最小间隔" 
                 value={getDisplayValue(localSettings.minIntervalMinutes, 'min', localSettings.minIntervalUnit)}
                 currentUnit={localSettings.minIntervalUnit}
                 onChange={(val) => updateSetting('minIntervalMinutes', val)}
                 onToggleUnit={() => toggleUnit('minIntervalMinutes')}
             />
-
             <InputRow 
-                label="最大间隔" 
+                label="提醒最大间隔" 
                 value={getDisplayValue(localSettings.maxIntervalMinutes, 'min', localSettings.maxIntervalUnit)}
                 currentUnit={localSettings.maxIntervalUnit}
-                min={getDisplayValue(localSettings.minIntervalMinutes, 'min', localSettings.maxIntervalUnit)} // Min validation might feel weird if units mixed, but okay for now
+                min={getDisplayValue(localSettings.minIntervalMinutes, 'min', localSettings.maxIntervalUnit)}
                 onChange={(val) => updateSetting('maxIntervalMinutes', val)}
                 onToggleUnit={() => toggleUnit('maxIntervalMinutes')}
             />
-
             <InputRow 
-                label="微休息时间" 
+                label="正念提神时长" 
                 value={getDisplayValue(localSettings.microBreakSeconds, 'sec', localSettings.microBreakUnit)}
                 currentUnit={localSettings.microBreakUnit}
                 onChange={(val) => updateSetting('microBreakSeconds', val)}
@@ -250,28 +293,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             />
           </div>
 
-          <div className="relative py-2">
-            <div className="absolute inset-0 flex items-center" aria-hidden="true">
-              <div className="w-full border-t border-slate-100"></div>
-            </div>
-            <div className="relative flex justify-center">
-              <span className="bg-white px-3 text-xs font-medium text-slate-400 uppercase tracking-wider">休息设置</span>
-            </div>
-          </div>
+          <div className="border-t border-slate-100"></div>
 
-          <div className="space-y-4">
+          {/* Section 2: Break Options */}
+          <div className="space-y-3">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">休息偏好</div>
             <InputRow 
-                label="长休息时间" 
+                label="长休息时长" 
                 value={getDisplayValue(localSettings.longBreakMinutes, 'min', localSettings.longBreakUnit)}
                 currentUnit={localSettings.longBreakUnit}
                 onChange={(val) => updateSetting('longBreakMinutes', val)}
                 onToggleUnit={() => toggleUnit('longBreakMinutes')}
             />
 
-            {/* Toggle */}
             <div className="flex items-center justify-between py-1 group">
-               <label className="text-slate-700 font-medium text-base sm:text-lg group-hover:text-indigo-600 transition-colors duration-200">休息倒计时</label>
-               <div className="flex items-center justify-end w-[180px] pr-2">
+               <label className="text-slate-700 font-medium text-sm sm:text-base group-hover:text-slate-900 transition-colors">开启休息倒计时</label>
+               <div className="flex items-center justify-end">
                  <label className="relative inline-flex items-center cursor-pointer">
                     <input 
                       type="checkbox" 
@@ -279,9 +316,125 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => setLocalSettings(prev => ({...prev, showBreakCountdown: e.target.checked}))}
                       className="sr-only peer" 
                     />
-                    <div className="w-12 h-7 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-100 rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600 hover:bg-slate-300 transition-colors"></div>
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600 hover:bg-slate-300 transition-colors"></div>
                 </label>
                </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-100"></div>
+
+          {/* Section 3: Backup & Restore */}
+          <div className="space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">数据备份与快照管理</div>
+              <button
+                type="button"
+                onClick={handleCreateManualSnapshot}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 font-semibold text-xs rounded-lg transition-all active:scale-95 border border-teal-200/60"
+              >
+                <Save size={13} className="text-teal-600 shrink-0" />
+                <span>拍摄新快照</span>
+              </button>
+            </div>
+
+            {/* Auto Backup Toggle */}
+            <div className="flex items-center justify-between py-1">
+               <div className="flex items-center gap-2">
+                 <ShieldCheck size={18} className="text-teal-600" />
+                 <span className="text-slate-700 font-medium text-sm">自动本地备份快照</span>
+               </div>
+               <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={localSettings.autoBackupEnabled ?? true} 
+                    onChange={(e) => setLocalSettings(prev => ({...prev, autoBackupEnabled: e.target.checked}))}
+                    className="sr-only peer" 
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600 hover:bg-slate-300 transition-colors"></div>
+              </label>
+            </div>
+
+            {/* Snapshot Records List */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+                <span className="flex items-center gap-1">
+                  <History size={13} />
+                  <span>历史快照列表 ({snapshots.length})</span>
+                </span>
+              </div>
+
+              {snapshots.length > 0 ? (
+                <div className="max-h-48 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                  {snapshots.map((snap) => (
+                    <div 
+                      key={snap.id} 
+                      className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-slate-100/90 rounded-xl border border-slate-200/70 text-xs transition-colors"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="font-mono font-semibold text-slate-800">
+                          {new Date(snap.timestamp).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          包含 {snap.data?.history?.length || 0} 条记录 · {snap.data?.tags?.length || 0} 个标签
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreSnapshotEntry(snap)}
+                          className="flex items-center gap-1 px-2 py-1 bg-white hover:bg-teal-50 text-teal-700 font-semibold rounded-lg border border-slate-200 hover:border-teal-300 transition-all active:scale-95 text-[11px]"
+                          title="恢复此快照数据"
+                        >
+                          <RefreshCw size={11} />
+                          <span>还原</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSnapshotEntry(snap.id)}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="删除此快照"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-4 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  暂无快照记录，可以点击右上角“拍摄新快照”保存
+                </div>
+              )}
+            </div>
+
+            {/* Backup/Export & Import JSON Buttons */}
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={handleExportBackup}
+                className="flex items-center justify-center gap-2 py-2.5 px-3 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-medium text-xs rounded-xl transition-all active:scale-98"
+              >
+                <Download size={15} />
+                <span>导出备份 JSON</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center justify-center gap-2 py-2.5 px-3 bg-slate-100 hover:bg-slate-200/80 text-slate-700 font-medium text-xs rounded-xl transition-all active:scale-98"
+              >
+                <Upload size={15} />
+                <span>导入备份 JSON</span>
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileSelect} 
+                accept=".json" 
+                className="hidden" 
+              />
             </div>
           </div>
 
@@ -291,16 +444,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-between items-center sticky bottom-0 z-10">
             <button 
                 onClick={handleReset}
-                className="flex items-center gap-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 px-4 py-2.5 rounded-xl transition-all active:scale-95 font-medium"
+                className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 px-3 py-2 rounded-xl transition-all active:scale-95 text-sm font-medium"
                 title="恢复默认设置"
             >
-                <RotateCcw size={18} />
+                <RotateCcw size={16} />
                 <span>重置</span>
             </button>
 
             <button 
                 onClick={handleSave}
-                className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium py-2.5 px-8 rounded-xl transition-all shadow-lg shadow-indigo-200 active:scale-95 active:shadow-none"
+                className="bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white font-medium text-sm py-2.5 px-6 rounded-xl transition-all shadow-xs active:scale-95"
             >
                 保存设置
             </button>

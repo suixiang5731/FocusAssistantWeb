@@ -26,6 +26,7 @@ export interface Settings {
   longBreakUnit: TimeUnit;
 
   showBreakCountdown: boolean;     // Toggle for break UI
+  autoBackupEnabled: boolean;      // Toggle for automatic backups
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -45,6 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
   longBreakUnit: 'min',
 
   showBreakCountdown: true,
+  autoBackupEnabled: true,
 };
 
 export interface Tag {
